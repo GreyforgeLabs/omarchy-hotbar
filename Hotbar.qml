@@ -209,11 +209,14 @@ BarWidget {
   // Hyprland.activeToplevel is null until the first focus change after the
   // shell starts, so the foreign-toplevel `activated` flag (correct from the
   // first frame) and the compositor's focus history back it up.
+  // Hyprland.activeToplevel also flips to null for a moment between two
+  // focus changes; the last non-null value bridges that gap.
   readonly property string activeAddress: {
     var tl = Hyprland.activeToplevel
     if (tl && tl.address) return String(tl.address)
-    return fallbackActiveAddress
+    return lastActiveAddress || fallbackActiveAddress
   }
+  property string lastActiveAddress: ""
   property string fallbackActiveAddress: ""
 
   function detectActiveAddress(values) {
@@ -290,7 +293,10 @@ BarWidget {
     target: Hyprland
     function onActiveToplevelChanged() {
       var tl = Hyprland.activeToplevel
-      if (tl && tl.address) root.mru = Model.touchMru(root.mru, String(tl.address))
+      if (tl && tl.address) {
+        root.lastActiveAddress = String(tl.address)
+        root.mru = Model.touchMru(root.mru, root.lastActiveAddress)
+      }
       root.scheduleRebuild()
     }
     function onRawEvent(event) {

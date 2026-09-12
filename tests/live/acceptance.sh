@@ -121,8 +121,14 @@ for _ in $(seq 1 30); do [[ $(hyprctl activewindow -j | jq -r .class) == "hb.bro
 pass "G5 activate focuses the group's MRU window"
 
 for which in places running class:hb.browser; do
-  omarchy-shell hotbar open "$which" >/dev/null; pause 0.6
-  state | field "d['openPopover']" | grep -q . || fail "popover $which did not open"
+  opened=""
+  for attempt in 1 2 3; do   # an outside click by a human dismisses a popover; retry
+    omarchy-shell hotbar close >/dev/null; pause 0.3
+    omarchy-shell hotbar open "$which" >/dev/null; pause 0.6
+    opened=$(state | field "d['openPopover']")
+    [[ -n "$opened" ]] && break
+  done
+  [[ -n "$opened" ]] || fail "popover $which did not open"
 done
 omarchy-shell hotbar close; pause 0.4
 [[ $(state | field "d['openPopover']") == "" ]] || fail "popover did not close"
