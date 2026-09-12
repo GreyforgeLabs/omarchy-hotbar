@@ -35,7 +35,10 @@ Windows
 
 Setup
   install                Enable the widget, place it after the Omarchy menu,
-                         and link this CLI into ~/.local/bin.
+                         and link this CLI into ~/.local/bin (never
+                         overwrites a file owned by anything else).
+  uninstall              Remove the owned CLI link, the HOTBAR state mirror,
+                         and the plugin. Safe to run repeatedly.
   import omapanel [--apply]
                          Read OmaPanel's pinned apps from shell.json and turn
                          them into Hotbar pins. Prints the plan; --apply writes.
@@ -48,15 +51,179 @@ EOF
 
 ipc() { omarchy-shell hotbar "$@"; }
 
-need_shell() {
+# Preflight before every HOTBAR IPC command: confirm omarchy-shell itself is
+# running, then poll `hotbar ping` for a short bounded period (the widget
+# re-registers its IPC target ~400 ms after a plugin hot-reload). The
+# requested operation is then performed exactly once — state-changing calls
+# are never blindly retried.
+hotbar_preflight() {
   if ! omarchy-shell shell ping >/dev/null 2>&1; then
     echo "hotbar: omarchy-shell is not running" >&2
-    exit 1
+    return 1
   fi
+  local attempts="${HOTBAR_PREFLIGHT_ATTEMPTS:-8}"
+  local interval="${HOTBAR_PREFLIGHT_INTERVAL:-0.1}"
+  local i
+  for ((i = 1; i <= attempts; i++)); do
+    if omarchy-shell hotbar ping >/dev/null 2>&1; then return 0; fi
+    sleep "$interval"
+  done
+  echo "hotbar: HOTBAR widget is not answering (it may be reloading — try again in a moment)" >&2
+  return 1
+}
+
+need_shell() { hotbar_preflight; }
+
+# Canonical path of this HOTBAR CLI, for ownership comparisons.
+hotbar_cli_source() {
+  realpath "${BASH_SOURCE[0]}" 2>/dev/null || readlink -f "${BASH_SOURCE[0]}"
+}
+
+hotbar_cli_link() { printf '%s' "$HOME/.local/bin/hotbar"; }
+
+hotbar_state_file() {
+  printf '%s' "${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/hotbar-settings.json"
+}
+
+# Resolve a symlink to a canonical path for comparison. Prints "" when the
+# link is dangling and cannot be resolved.
+resolve_link() {
+  local p="$1" r=""
+  r="$(realpath "$p" 2>/dev/null || true)"
+  if [[ -n "$r" ]]; then printf '%s' "$r"; return 0; fi
+  r="$(readlink "$p" 2>/dev/null || true)"
+  printf '%s' "$r"
+}
+
+# True when ~/.local/bin/hotbar is a symlink resolving to this HOTBAR CLI.
+cli_owned_by_hotbar() {
+  local target src resolved
+  target="$(hotbar_cli_link)"
+  src="$(hotbar_cli_source)"
+  [[ -L "$target" ]] || return 1
+  resolved="$(resolve_link "$target")"
+  [[ "$resolved" == "$src" ]]
+}
+
+install_cli_link() {
+  local target src resolved
+  target="$(hotbar_cli_link)"
+  src="$(hotbar_cli_source)"
+  mkdir -p "$HOME/.local/bin"
+  if [[ ! -e "$target" && ! -L "$target" ]]; then
+    ln -s "$src" "$target" && echo "Linked ~/.local/bin/hotbar"
+    return 0
+  fi
+  if [[ -L "$target" ]]; then
+    resolved="$(resolve_link "$target")"
+    if [[ "$resolved" == "$src" ]]; then
+      # Idempotent: already ours. Refresh a dangling link if needed.
+      if [[ ! -e "$target" ]]; then ln -sf "$src" "$target"; fi
+      echo "hotbar: ~/.local/bin/hotbar already points at this HOTBAR CLI"
+      return 0
+    fi
+    echo "hotbar: $target is a symlink to '${resolved:-<unresolvable>}' — not this HOTBAR CLI ($src); leaving it alone" >&2
+    return 1
+  fi
+  echo "hotbar: $target exists and is not owned by HOTBAR; leaving it alone" >&2
+  return 1
+}
+
+cmd_uninstall() {
+  local rc=0 target state_file state_dir
+  target="$(hotbar_cli_link)"
+  state_file="$(hotbar_state_file)"
+  state_dir="$(dirname "$state_file")"
+  if cli_owned_by_hotbar; then
+    if rm -- "$target"; then
+      echo "Removed $target"
+    else
+      echo "hotbar: could not remove $target" >&2; rc=1
+    fi
+  elif [[ -e "$target" || -L "$target" ]]; then
+    echo "note: $target is not owned by HOTBAR; leaving it alone"
+  else
+    echo "note: no CLI link at $target"
+  fi
+  if [[ -f "$state_file" ]]; then
+    if rm -- "$state_file"; then
+      echo "Removed $state_file"
+    else
+      echo "hotbar: could not remove $state_file" >&2; rc=1
+    fi
+  else
+    echo "note: no HOTBAR state file at $state_file"
+  fi
+  # Only the HOTBAR state file's own directory, and only when empty. Shared
+  # Omarchy directories above it are never touched.
+  if [[ -d "$state_dir" ]]; then rmdir -- "$state_dir" 2>/dev/null || true; fi
+  if [[ -d "$HOME/.config/omarchy/plugins/$PLUGIN_ID" ]]; then
+    if omarchy plugin remove "$PLUGIN_ID" --yes; then
+      echo "Removed plugin $PLUGIN_ID"
+    else
+      echo "hotbar: 'omarchy plugin remove $PLUGIN_ID --yes' failed" >&2; rc=1
+    fi
+  else
+    echo "note: plugin $PLUGIN_ID is not installed"
+  fi
+  return $rc
+}
+
+cmd_doctor() {
+  local ok=0 target src resolved state_file
+  target="$(hotbar_cli_link)"
+  src="$(hotbar_cli_source)"
+  state_file="$(hotbar_state_file)"
+  check() { if "$@" >/dev/null 2>&1; then echo "ok   $*"; else echo "MISSING $*"; ok=1; fi; }
+  dir="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
+  if [[ -f "$dir/manifest.json" ]]; then
+    echo "ok   plugin files at $dir"
+  else
+    echo "MISSING plugin dir $dir"; ok=1
+  fi
+  if cli_owned_by_hotbar; then
+    echo "ok   CLI link $target -> this HOTBAR CLI"
+  elif [[ -e "$target" || -L "$target" ]]; then
+    resolved="$(resolve_link "$target")"
+    echo "CONFLICT $target points at '${resolved:-<unresolvable>}' (run 'hotbar install' after removing it, or leave it)"; ok=1
+  else
+    echo "MISSING CLI link $target (run: hotbar install)"; ok=1
+  fi
+  if [[ -f "$state_file" ]]; then
+    echo "ok   HOTBAR state file at $state_file"
+  else
+    echo "note  no HOTBAR state file at $state_file (created on first settings write)"
+  fi
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) echo "ok   ~/.local/bin is in PATH" ;;
+    *) echo "warn  ~/.local/bin is not in PATH (hotbar will not resolve by name)" ;;
+  esac
+  check command -v jq
+  check command -v findmnt
+  check command -v xdg-open
+  check command -v uwsm-app
+  check command -v gtk-launch
+  if omarchy-shell shell ping >/dev/null 2>&1; then
+    echo "ok   omarchy-shell running"
+    if omarchy-shell hotbar ping >/dev/null 2>&1; then
+      echo "ok   HOTBAR IPC target answering"
+      if state=$(ipc state 2>/dev/null); then
+        echo "ok   widget live: region=$(jq -r .region <<<"$state") pins=$(jq -r '.pins|length' <<<"$state") windows=$(jq -r .windows <<<"$state")"
+      else
+        echo "MISSING widget not placed in the bar (run: hotbar install)"; ok=1
+      fi
+    else
+      echo "MISSING HOTBAR IPC target not answering (run: hotbar install, or wait out a plugin reload)"; ok=1
+    fi
+  else
+    echo "MISSING omarchy-shell not running"; ok=1
+  fi
+  pgrep -f "hotbar-places" >/dev/null && echo "note  a hotbar-places helper is running (it should exit within a second)"
+  return $ok
 }
 
 cmd="${1:-}"
-(( $# > 0 )) && shift || true
+if (( $# > 0 )); then shift; fi
 
 case "$cmd" in
   pin)
@@ -113,10 +280,9 @@ case "$cmd" in
     omarchy-shell shell setPluginEnabled "$PLUGIN_ID" true >/dev/null
     sleep 1
     omarchy bar move "$PLUGIN_ID" --section left --index 1
-    if [[ -d "$HOME/.local/bin" ]]; then
-      ln -sfn "$(realpath "${BASH_SOURCE[0]}")" "$HOME/.local/bin/hotbar" && echo "Linked ~/.local/bin/hotbar"
-    fi
+    install_cli_link
     echo "Hotbar placed after the Omarchy menu. Pin apps from the Running drawer or with: hotbar pin <app>" ;;
+  uninstall) cmd_uninstall ;;
   import)
     [[ "${1:-}" == "omapanel" ]] || { echo "hotbar import omapanel [--apply]" >&2; exit 1; }
     cfg="$HOME/.config/omarchy/shell.json"
@@ -138,28 +304,7 @@ case "$cmd" in
     else
       echo "Dry run. Re-run with --apply to write these pins."
     fi ;;
-  doctor)
-    ok=0
-    check() { if "$@" >/dev/null 2>&1; then echo "ok   $*"; else echo "MISSING $*"; ok=1; fi; }
-    dir="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
-    [[ -f "$dir/manifest.json" ]] && echo "ok   plugin files at $dir" || { echo "MISSING plugin dir $dir"; ok=1; }
-    check command -v jq
-    check command -v findmnt
-    check command -v xdg-open
-    check command -v uwsm-app
-    check command -v gtk-launch
-    if omarchy-shell shell ping >/dev/null 2>&1; then
-      echo "ok   omarchy-shell running"
-      if state=$(ipc state 2>/dev/null); then
-        echo "ok   widget live: region=$(jq -r .region <<<"$state") pins=$(jq -r '.pins|length' <<<"$state") windows=$(jq -r .windows <<<"$state")"
-      else
-        echo "MISSING widget not placed in the bar (run: hotbar install)"; ok=1
-      fi
-    else
-      echo "MISSING omarchy-shell not running"; ok=1
-    fi
-    pgrep -f "hotbar-places" >/dev/null && echo "note  a hotbar-places helper is running (it should exit within a second)"
-    exit $ok ;;
+  doctor) cmd_doctor ;;
   -h|--help|help|"") usage ;;
   *) echo "hotbar: unknown command '$cmd'" >&2; usage >&2; exit 1 ;;
 esac

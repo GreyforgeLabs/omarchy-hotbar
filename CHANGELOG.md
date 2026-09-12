@@ -1,6 +1,22 @@
 # Changelog
 
-## 0.2.0 — 2026-09-12
+## 0.2.1 — 2026-09-12
+
+- Safe installer: `hotbar install` never overwrites a file it does not own,
+  and reports the exact conflicting path. New `hotbar uninstall` removes the
+  owned CLI link, the HOTBAR state mirror, and the plugin; both are covered
+  by isolated lifecycle tests.
+- Validation hardening: one canonical pin-key check (rejects `|`, control
+  characters, overlong keys), settings enforce the manifest ranges and enums,
+  lists are capped, and command-bearing favourites are dropped.
+- IPC reload resilience: new `hotbar ping` target plus a bounded CLI
+  preflight, so state-changing commands run exactly once after a hot-reload.
+- Bounded overflow: unknown layout budget keeps the last good pin count, or
+  at most 6 pins on a cold start — never every pin. Scan retries reset on
+  layout, position, and screen changes.
+- Offline CI (`.github/workflows/test.yml`) with model, lifecycle, retry,
+  manifest-parity, ShellCheck, and syntax gates.
+- Qualification refreshed for 0.2.1, including a two-screen live run.
 
 - Hotbar Settings popover: every toggle the widget honours, flipped from
   the bar (appearance, behaviour, visible cells, Places sections).

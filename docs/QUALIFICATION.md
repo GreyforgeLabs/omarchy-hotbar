@@ -1,40 +1,71 @@
-# Hotbar 0.1.0 — Qualification record
+# Hotbar 0.2.1 — Qualification record
 
 Machine: greyarch — Omarchy 4.0.3-1, Hyprland 0.56.2, Quickshell 0.3.1,
-one monitor (DP-2, 2560×1440 @1.0), theme `greyforge` (dark) and
-`flexoki-light` (light). Date: 2026-09-12.
+two monitors (DP-2 2560×1440 @1.0, HD-1 1920×1080 @1.0). Date: 2026-09-12.
 
 Evidence comes from `tests/run.sh` (offline), `tests/live/acceptance.sh`
-(live shell) and manual runs recorded below. "Manual" means a screenshot or
-IPC read that was checked by hand during the session.
+(live shell), and the live runs recorded below.
 
 | Gate | Result | Evidence |
 |---|---|---|
-| G0 Architecture | PASS | normal `bar-widget` plugin, no daemon; renderer consumes `pinnedGroups` / `runningGroups` only; there is no per-window cell type anywhere in the tree |
-| G1 Spatial stability | PASS | `acceptance.sh`: surface 246 px before and after 41 new windows; pin order identical; back to baseline after closing them |
-| G2 Application identity | PASS (matrix) | 32 node tests over the identity engine covering native, XWayland-style class, Electron (`StartupWMClass`), Chromium, Omarchy web apps by host, installed PWAs (`crx_`), custom terminal classes, class ≠ initialClass, Steam games, missing entries, raw commands, overrides, invalid overrides. Live: `hotbar identify` shows `foot`, `chromium`, `com.thisisgm.flea` resolving by desktop id; test app ids fall back to `class:` keys |
-| G3 Bounded complexity | PASS | `acceptance.sh`: 9 unpinned apps (20 windows) → Running only; 63 pins → 44 visible + 19 in the drawer with no growth beyond the budget |
-| G4 Places | PASS | live: Home + 5 XDG folders (Desktop omitted because it resolves to `$HOME/`), three drives (`/home/greyforge`, `/mnt/greyforge-data`, NTFS USB stick with its label), Trash via the files directory (no `trash:` handler on this machine), Open File Manager; `xdg-open ~/Downloads` opened Flea; favourites with unicode + quotes, `exec` fields rejected, missing paths dropped |
-| G5 Mouse UX | PASS | IPC: launch-or-focus, MRU cycle, drawer cycle, popovers open/switch/close. Hover: tooltip on the Places cell, hover fill, and the preview strip (two live thumbnails, active window outlined) observed with the pointer parked on the Foot cell for 1.4 s |
-| G6 Responsive layout | PASS | budget derived from the real neighbouring sections; with 63 pins Hotbar stopped ~80 px short of the right-hand widgets and pushed nothing |
-| G7 Orientation | PASS | screenshots for all four positions: indicators sit on the inner edge, popovers open inward, cells stack on vertical bars |
-| G8 Multi-monitor | by construction | popovers are `KeyboardPanel`s bound to the anchor's own bar window (`anchorWindow.screen`); the machine has one monitor, so not exercised |
-| G9 Theme | PASS | dark `greyforge` and light `flexoki-light`: bar cells, indicators, popover surface/border/text all followed the theme live without a restart |
-| G10 Performance | PASS | shell CPU over 10 s idle: 8 ticks without Hotbar vs 2 ticks with it (noise); no timers run while idle; the Places helper runs once per open and exits |
-| G11 Security | PASS | no `run()`/bash strings anywhere; launches are argv; window actions are `hl.dsp.*` dispatchers with a hex-validated address; `openArgv` refuses non-paths; favourites/overrides cannot carry commands (tests) |
-| G12 Failure containment | PASS | 41-window churn; popover open while its group vanished closes itself; invalid regex/JSON/settings rejected with a message; missing icons fall back to a glyph; earlier crash (thumbnails recreated mid-frame) fixed by signature-gated row rebuilds and one-shot captures |
-| G13 Removal | PASS | `omarchy plugin remove greyforge.hotbar --yes`: no process, no service, no plugin dir, no layout entry, Hyprland untouched. Only `~/.local/state/omarchy/hotbar-settings.json` (the pin mirror) remains, documented in README |
-| G14 Competitive | PASS (design), see note | OmaPanel 1.11 (per-window chips, ~80 settings) and rosakodu.dock 1.8 were audited before removal; under the same 41-window load a per-window taskbar grows by >1000 px while Hotbar stays at 246 px. A same-day side-by-side screenshot was not recorded because the owner asked for both to be removed |
+| Static | PASS | `bash -n` on all scripts; ShellCheck 0.10.0 clean on `bin/hotbar`, `bin/hotbar-places`, `tests/run.sh`, `tests/test_lifecycle.sh`, `tests/test_retry.sh`, `tests/live/acceptance.sh` (two genuine findings fixed, nothing suppressed); `jq -e . manifest.json`; workflow YAML parses |
+| Model | PASS | `test_model.js` 42 tests (identity, MRU, groups, pin-key validation, settings ranges/enums, array caps, favorites/matches, overflow fallback), `test_places.js` 9, `test_registry.js` 6, `test_manifest.js` 8 |
+| CLI | PASS | `test_lifecycle.sh` 9 tests (clean/repeat install, regular-file and symlink conflicts preserved, owned uninstall, state cleanup, idempotency, noninteractive `--yes` removal); `test_retry.sh` 3 tests (transient outage retried then action runs once, permanent outage fails cleanly with zero actions, dead shell fails fast) |
+| Live shell | PASS | `acceptance.sh`: ALL PASS — surface 246 px before/after 41 windows, pin order stable, 10+10+0+1 grouping, 9 unpinned apps behind Running, MRU cycle, activate, popovers open/switch/close, churn back to baseline |
+| Overflow containment | PASS | unknown budget returns at most 6 pins (unit); `fallbackVisibleCount` retains last good budget (unit); cold-start `visiblePinCount` initializes bounded; live bar move showed empty-region transient with no expansion, region recovered to `left` |
+| Install/remove/reinstall | PASS | real `hotbar install` idempotent over owned link; `hotbar doctor` all-ok; real `hotbar uninstall` removed owned link, state mirror, and plugin while `~/.local/bin` neighbours and `~/.local/state/omarchy` contents survived; fresh `plugin add` + reinstall re-linked, pins/settings IPC verified, user pins restored to `foot\|YouTube\|chromium` |
+| Multi-monitor | PASS | two physical outputs; `screens` reports `DP-2\|HD-1`; `openOn HD-1 running` returned ok and changed 3.06% of HD-1 output pixels (grim before/after diff); `closeOn HD-1` ok; `openOn DP-2 places` confirmed via state; unknown screen rejected with the screen list |
+| CI | PASS | `.github/workflows/test.yml` runs the full offline suite plus ShellCheck on push/PR; badge at top of README |
+
+## Security
+
+- No new shell interpolation or command execution: `grep` for `execDetached` shows only argv arrays (`launchArgv`, `actionArgv`, `openArgv` paths); favourites/overrides still cannot carry `exec`/`command`/`args`/`run` (unit-tested at both the model and validation layers).
+- Dispatcher addresses still hex-validated (`safeAddress`); desktop ids still path/option-refused (`isDesktopId`).
+- `pin`/`unpin`/`setPins` IPC now reject pipe, control-character, and overlong keys; live `pin 'a|b'` returns an error and stores nothing.
+- Live `set iconSize 99` and `set iconStyle rainbow` rejected with the allowed range/options; valid values persist.
+- Installer refuses unrelated files: live pre-existing link untouched by the old tree; isolated tests prove regular files and foreign symlinks are never overwritten, and uninstall never deletes a path it does not own.
+
+## Functional
+
+Pin/unpin, launch, focus, cycle, Running drawer, Places, Settings, favourites,
+identity overrides, close window/close all (via menus), and responsive
+overflow all exercised by the live acceptance run except close-all, which was
+exercised in 0.2.0 and is unchanged in 0.2.1. `hotbar doctor` now reports CLI
+ownership, conflicts, state file, PATH, and IPC liveness; full output all-ok
+recorded above.
+
+## Failure behavior
+
+- Malformed settings rejected at the IPC boundary with a message (live).
+- Missing desktop entries still get a bounded `class:` cell (unit).
+- Invalid and overlong regexes skipped without crashing (unit).
+- Vanished windows: popover closes itself (0.2.0 path, unchanged); MRU pruned to live addresses (unit).
+- Broken layout discovery stays bounded at last-good-or-6 (unit + live transient observed).
+- Plugin hot reload: `ping` answers `ok` after restart; CLI preflight polls ~800 ms and runs the action exactly once (mock tests + live commands succeeding through a restart gap).
+
+## Performance
+
+No new timers, no polling while idle, no daemon. Focus path unchanged:
+`visiblePinKeys` still shields pinned cells from rebuilds; `budgetProbe` still
+gates the budget. Added only a cache-size guard (drop past 1024 identity
+entries). Acceptance timings match 0.2.0 behaviour (246 px surface, instant
+recovery after churn). No precision claims beyond that.
+
+## Removal
+
+Real `hotbar uninstall`: owned symlink removed, `hotbar-settings.json`
+removed, empty state dir removed only when empty, plugin removed via
+`omarchy plugin remove greyforge.hotbar --yes`. Neighbouring `~/.local/bin`
+entries and `~/.local/state/omarchy` contents verified untouched. Second and
+third runs exit 0 (idempotent).
+
+## Multi-monitor
+
+Two physical outputs exercised (see gate table). Registry unit tests cover
+register/lookup/unregister/refuse/same-name replacement.
 
 ## Known limitations
 
-- Hover previews were observed with a warped (not hand-moved) pointer; the
-  450 ms delay and the tooltip's popup mapping interact through a 260 ms
-  hover grace period — worth one hand check on a slow trackpad.
-- `omarchy bar set … --json` cannot carry arrays through the shell IPC; use
-  `hotbar set` (hex-encoded JSON over Hotbar's own target).
-- After a plugin hot-reload (`omarchy plugin update`) the shell's IPC target
-  is re-registered after ~400 ms; scripts should not call it in that window.
-- `Hyprland.activeToplevel` is null until the first focus change after the
-  shell starts; Hotbar seeds focus from `wayland.activated` / focus history,
-  so the first click still behaves correctly.
+- `omarchy bar set … --json` still cannot carry arrays through the shell IPC; use `hotbar set` (unchanged from 0.2.0).
+- After a plugin hot-reload the IPC target re-registers after ~400 ms; the CLI now waits this out, but external scripts calling `omarchy-shell hotbar …` directly in that window still need their own retry.
+- Hover previews were observed with a warped (not hand-moved) pointer (carried over from 0.2.0).

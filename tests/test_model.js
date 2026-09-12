@@ -238,8 +238,10 @@ test("pinned app with a missing desktop entry still gets a cell", () => {
 
 test("visiblePinCount", () => {
   // cell 27, gap 2, places + running = 2 fixed cells, 2 separators of 9
-  assert.strictEqual(M.visiblePinCount(0, 27, 2, 8, 2, 18), 8)      // unknown -> all
-  assert.strictEqual(M.visiblePinCount(-5, 27, 2, 8, 2, 18), 8)
+  // unknown budget stays bounded: at most 6 pins, never the whole list
+  assert.strictEqual(M.visiblePinCount(0, 27, 2, 8, 2, 18), 6)
+  assert.strictEqual(M.visiblePinCount(-5, 27, 2, 8, 2, 18), 6)
+  assert.strictEqual(M.visiblePinCount(0, 27, 2, 3, 2, 18), 3)
   assert.strictEqual(M.visiblePinCount(10000, 27, 2, 8, 2, 18), 8)
   assert.strictEqual(M.visiblePinCount(58 + 18 + 27 * 3 + 2 * 3, 27, 2, 8, 2, 18), 3)
   assert.strictEqual(M.visiblePinCount(58 + 18 + 27 * 3 + 2 * 2, 27, 2, 8, 2, 18), 3)
@@ -286,8 +288,7 @@ test("windowLocation", () => {
   assert.strictEqual(M.windowLocation({ workspaceId: 2, workspaceName: "mail", monitorName: "" }), "mail")
 })
 
-test("brutal scenario: 60 windows across 4 pins -> 4 pinned cells, bounded running", () => {
-  const pins = ["chromium", "foot", "spotify", "YouTube"]
+test("brutal scenario: 60 windows across 4 pins -> 4 pinned cells, bounded running", () => {  const pins = ["chromium", "foot", "spotify", "YouTube"]
   const windows = []
   for (let i = 0; i < 10; i++) windows.push(resolved({ address: "c" + i, appId: "chromium", title: "Site " + i }))
   for (let i = 0; i < 10; i++) windows.push(resolved({ address: "f" + i, appId: "foot", title: "sh " + i }))
@@ -300,6 +301,124 @@ test("brutal scenario: 60 windows across 4 pins -> 4 pinned cells, bounded runni
   assert.deepStrictEqual(g.pinned.map(x => x.key), pins)
   assert.strictEqual(g.running.length, 8)
   assert.strictEqual(M.visiblePinCount(400, 27, 2, g.pinned.length, 2, 18), 4)
+})
+
+// ------------------------------------------------- pin-key validation
+
+test("pin keys: pipe, controls and overlong rejected; unicode valid", () => {
+  assert.strictEqual(M.isValidPinKey(""), false)
+  assert.strictEqual(M.isValidPinKey("   "), false)
+  assert.strictEqual(M.isValidPinKey("a|b"), false)
+  assert.strictEqual(M.isValidPinKey("a\x00b"), false)
+  assert.strictEqual(M.isValidPinKey("a\x01b"), false)
+  assert.strictEqual(M.isValidPinKey("a\x7fb"), false)
+  assert.strictEqual(M.isValidPinKey("a\nb"), false)
+  assert.strictEqual(M.isValidPinKey("x".repeat(256)), false)
+  assert.strictEqual(M.isValidPinKey("x".repeat(255)), true)
+  assert.strictEqual(M.isValidPinKey("chromium"), true)
+  assert.strictEqual(M.isValidPinKey("class:tui.float"), true)
+  assert.strictEqual(M.isValidPinKey("Chromium"), true)
+  assert.strictEqual(M.isValidPinKey("Téléchargements"), true)
+  assert.strictEqual(M.isValidPinKey("org.gnome.Nautilus"), true)
+})
+
+test("normalizePins drops invalid keys and caps the list", () => {
+  assert.deepStrictEqual(M.normalizePins(["ok", "a|b", "c\x01d", "", null]), ["ok"])
+  assert.deepStrictEqual(M.normalizePins(["x".repeat(300), "ok"]), ["ok"])
+  const big = []
+  for (let i = 0; i < 200; i++) big.push("app" + i)
+  assert.strictEqual(M.normalizePins(big).length, 128)
+  // toggle/move with an invalid key leave the list alone
+  assert.deepStrictEqual(M.togglePin(["a"], "x|y"), ["a"])
+  assert.deepStrictEqual(M.movePin(["a", "b"], "x|y", 1), ["a", "b"])
+})
+
+// ------------------------------------------------- settings validation
+
+test("settings: integer ranges enforced", () => {
+  assert.deepStrictEqual(M.validateSetting("iconSize", 20), { ok: true, value: 20 })
+  assert.strictEqual(M.validateSetting("iconSize", 11).ok, false)
+  assert.strictEqual(M.validateSetting("iconSize", 25).ok, false)
+  assert.deepStrictEqual(M.validateSetting("spacing", 0), { ok: true, value: 0 })
+  assert.strictEqual(M.validateSetting("spacing", 13).ok, false)
+  assert.strictEqual(M.validateSetting("previewDelay", 99).ok, false)
+  assert.strictEqual(M.validateSetting("previewDelay", 1501).ok, false)
+  assert.strictEqual(M.validateSetting("previewDelay", "high").ok, false)
+})
+
+test("settings: enums enforced", () => {
+  assert.deepStrictEqual(M.validateSetting("iconStyle", "mono"), { ok: true, value: "mono" })
+  assert.deepStrictEqual(M.validateSetting("iconStyle", "color"), { ok: true, value: "color" })
+  assert.strictEqual(M.validateSetting("iconStyle", "rainbow").ok, false)
+  assert.deepStrictEqual(M.validateSetting("runningIndicator", "dot"), { ok: true, value: "dot" })
+  assert.strictEqual(M.validateSetting("runningIndicator", "blink").ok, false)
+  assert.deepStrictEqual(M.validateSetting("middleClick", "none"), { ok: true, value: "none" })
+  assert.strictEqual(M.validateSetting("middleClick", "launch").ok, false)
+})
+
+test("settings: booleans stay booleans, unknown keys rejected", () => {
+  assert.deepStrictEqual(M.validateSetting("responsive", true), { ok: true, value: true })
+  assert.strictEqual(M.validateSetting("responsive", "true").ok, false)
+  assert.strictEqual(M.validateSetting("responsive", 1).ok, false)
+  assert.strictEqual(M.validateSetting("nope", 1).ok, false)
+})
+
+test("settings: oversized arrays capped", () => {
+  const big = []
+  for (let i = 0; i < 200; i++) big.push("app" + i)
+  const r = M.validateSetting("pins", big)
+  assert.strictEqual(r.ok, true)
+  assert.strictEqual(r.value.length, 128)
+  assert.strictEqual(M.validateSetting("pins", "nope").ok, false)
+})
+
+test("matches: overlong and invalid regexes skipped", () => {
+  const overlong = "x".repeat(257)
+  const compiled = M.compileOverrides([
+    { matchClass: overlong, desktopId: "foot" },
+    { matchClass: "(((", desktopId: "foot" },
+    { matchClass: "", desktopId: "foot" },
+    { matchClass: "^foot$", desktopId: "foot" }
+  ])
+  assert.strictEqual(compiled.length, 1)
+  const checked = M.validateMatches([
+    { matchClass: overlong }, { matchClass: "(((" }, { matchClass: "^ok$" }
+  ])
+  assert.strictEqual(checked.ok, true)
+  assert.strictEqual(checked.value.length, 1)
+})
+
+test("favorites: command-bearing objects rejected", () => {
+  for (const key of ["exec", "command", "args", "run"]) {
+    const fav = {}
+    fav[key] = "xterm"
+    fav.path = "/tmp"
+    const r = M.validateFavorites([fav])
+    assert.strictEqual(r.ok, true)
+    assert.deepStrictEqual(r.value, [], key)
+  }
+  const good = M.validateFavorites([{ name: "P", path: "~/Projects" }, "/x"])
+  assert.strictEqual(good.ok, true)
+  assert.strictEqual(good.value.length, 2)
+  assert.strictEqual(M.validateFavorites("nope").ok, false)
+})
+
+// ------------------------------------------------- overflow fallback
+
+test("fallbackVisibleCount: last good retained, cold start bounded at 6", () => {
+  assert.strictEqual(M.fallbackVisibleCount(10, 4), 4)
+  assert.strictEqual(M.fallbackVisibleCount(2, 4), 2)
+  assert.strictEqual(M.fallbackVisibleCount(10, -1), 6)
+  assert.strictEqual(M.fallbackVisibleCount(10, NaN), 6)
+  assert.strictEqual(M.fallbackVisibleCount(10, undefined), 6)
+  assert.strictEqual(M.fallbackVisibleCount(3, undefined), 3)
+  assert.strictEqual(M.fallbackVisibleCount(0, undefined), 0)
+})
+
+test("responsive disabled shows every pin", () => {
+  // fallback with lastGood == pin count (what QML stores when responsive is
+  // off) never truncates
+  assert.strictEqual(M.fallbackVisibleCount(12, 12), 12)
 })
 
 console.log("HotbarModel: " + passed + " tests passed")

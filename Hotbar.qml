@@ -204,6 +204,9 @@ BarWidget {
     if (cached && !/^steam_app_/i.test(appId || cls)) return cached
     var ident = Model.resolveIdentity({ appId: appId, cls: cls, initialClass: initialClass, title: toplevel.title }, entryIndex, overrideRules, heuristic)
     identityCache[cacheKey] = ident
+    // Cache keys are (appId, class, initialClass) triples; ephemeral random
+    // ids must not grow this object without bound.
+    if (Object.keys(identityCache).length > 1024) identityCache = ({})
     return ident
   }
 
@@ -358,6 +361,7 @@ BarWidget {
     Registry.unregister(registeredScreen, root)
     registeredScreen = screenName
     Registry.register(registeredScreen, root)
+    root.resetLayoutProbe()
   }
   Component.onDestruction: Registry.unregister(registeredScreen, root)
 
@@ -365,7 +369,7 @@ BarWidget {
     refreshEntryIndex()
     Hyprland.refreshToplevels()
     scheduleRebuild()
-    layoutScanTimer.restart()
+    resetLayoutProbe()
   }
 
   // ---------------------------------------------------------- actions
@@ -737,11 +741,17 @@ BarWidget {
   // The host bar does no overflow handling, so Hotbar finds its own section
   // and the neighbouring ones inside the bar window and computes how much
   // room it has before it would crowd another widget. When the sections
-  // cannot be found the budget is unknown and every pin is shown.
+  // cannot be found the budget is unknown and Hotbar stays bounded: it keeps
+  // the last known good budget, or shows at most 6 pins on a cold start,
+  // routing the rest into Running. It never expands to every pin because
+  // discovery failed.
   property var sectionItems: ({ left: [], center: [], right: [] })
   property string region: ""
   property real availableExtent: 0
-  property int visiblePinCount: pins.length
+  property int visiblePinCount: Math.min(pinnedGroups.length, 6)
+  // Last budget computed from valid section geometry. Updated only on a
+  // valid discovery pass; transient QML-tree failure must not expand Hotbar.
+  property int lastGoodVisiblePinCount: -1
 
   readonly property var visiblePins: pinnedGroups.slice(0, Math.max(0, Math.min(pinnedGroups.length, visiblePinCount)))
   readonly property var overflowPins: pinnedGroups.slice(Math.max(0, Math.min(pinnedGroups.length, visiblePinCount)))
@@ -758,6 +768,17 @@ BarWidget {
   }
 
   property int layoutScanAttempts: 0
+  // One helper for restarting layout discovery: resets the retry count, the
+  // timer interval and the temporary scan state. Used on startup, bar layout
+  // changes, bar position changes and screen changes so the retry counter
+  // never stays permanently exhausted after a later layout change.
+  function resetLayoutProbe() {
+    layoutScanAttempts = 0
+    layoutScanTimer.interval = 250
+    region = ""
+    sectionItems = ({ left: [], center: [], right: [] })
+    layoutScanTimer.restart()
+  }
   Timer {
     id: layoutScanTimer
     interval: 250
@@ -765,7 +786,7 @@ BarWidget {
       root.scanSections()
       root.scheduleLayout()
       // The bar may still be building its sections; look again a few times
-      // before settling for the unbounded fallback.
+      // before settling for the bounded fallback.
       if (!root.region && root.layoutScanAttempts < 4) { root.layoutScanAttempts++; interval = 500; restart() }
       else interval = 250
     }
@@ -774,8 +795,8 @@ BarWidget {
   Connections {
     target: root.bar
     ignoreUnknownSignals: true
-    function onLayoutConfigChanged() { if (layoutScanTimer) layoutScanTimer.restart() }
-    function onPositionChanged() { if (layoutScanTimer) layoutScanTimer.restart() }
+    function onLayoutConfigChanged() { root.resetLayoutProbe() }
+    function onPositionChanged() { root.resetLayoutProbe() }
   }
 
   // The ModuleSlot the bar wrapped us in: the nearest ancestor that carries
@@ -891,10 +912,21 @@ BarWidget {
   function applyBudget() {
     if (!responsive) { visiblePinCount = pinnedGroups.length; availableExtent = 0; return }
     var w = root.QsWindow.window
-    if (!w || !region) { visiblePinCount = pinnedGroups.length; availableExtent = 0; return }
-    var total = root.vertical ? w.height : w.width
+    var total = (w && (root.vertical ? w.height : w.width)) || 0
     var s = root.sectionItems
     var left = sectionExtent(s.left || []), center = sectionExtent(s.center || []), right = sectionExtent(s.right || [])
+    // Discovery is successful only when enough section geometry exists to
+    // calculate a meaningful budget — a region string alone is not enough.
+    var geometryValid = total > 0 && region !== "" && (
+      isFinite(left.start) || isFinite(center.start) || isFinite(right.start))
+    if (!geometryValid) {
+      // Bounded fallback: last good budget, else at most 6 pins. Retry a few
+      // more times in case the bar is still building its sections.
+      visiblePinCount = Model.fallbackVisibleCount(pinnedGroups.length, lastGoodVisiblePinCount)
+      availableExtent = 0
+      if (layoutScanAttempts < 8) { layoutScanAttempts++; layoutScanTimer.interval = 500; layoutScanTimer.restart() }
+      return
+    }
     var own = siblingExtents()
     var blockers = {
       leftStart: left.start, leftEnd: left.end,
@@ -914,6 +946,8 @@ BarWidget {
       var needed = fixed * (cellExtent + cellSpacing) + seps + count * (cellExtent + cellSpacing) - cellSpacing
       if (available < needed + cellExtent / 2) count = Math.max(visiblePinCount, count - 1)
     }
+    // Only a valid discovery pass updates the last known good budget.
+    lastGoodVisiblePinCount = count
     if (count !== visiblePinCount) visiblePinCount = count
   }
 
@@ -1030,6 +1064,7 @@ BarWidget {
     function pin(key: string): string {
       var k = root.resolveKey(key)
       if (!k) return "error: empty key"
+      if (!Model.isValidPinKey(k)) return "error: invalid key"
       if (root.isPinned(k)) return "already pinned"
       return root.persistSettings({ pins: Model.togglePin(root.pins, k) }) ? "ok" : "error: could not persist"
     }
@@ -1041,13 +1076,18 @@ BarWidget {
     }
 
     // Keys separated by "|" (qs ipc would read a JSON array as several
-    // arguments). An empty string clears every pin.
+    // arguments). An empty string clears every pin. Every key passes the
+    // canonical pin validation; invalid ones are dropped, never stored.
     function setPins(keys: string): string {
       var list = String(keys || "").split("|").map(function(k) { return k.trim() }).filter(function(k) { return k.length > 0 })
       return root.persistSettings({ pins: Model.normalizePins(list) }) ? "ok" : "error: could not persist"
     }
 
     function pins(): string { return root.pins.join("|") }
+
+    // Liveness probe for the CLI preflight: the shell can be alive while
+    // this target is not yet re-registered after a plugin hot-reload.
+    function ping(): string { return "ok" }
 
     // setSetting <key> <hex of JSON value>. Hex because the IPC layer would
     // split a JSON array into separate arguments.

@@ -11,6 +11,12 @@
 
 var CLASS_PREFIX = "class:"
 
+// Bounds for untrusted configuration data.
+var MAX_PIN_KEY_LENGTH = 255
+var MAX_LIST_ENTRIES = 128
+var MAX_PATTERN_LENGTH = 256
+var COLD_START_FALLBACK_PINS = 6
+
 // --------------------------------------------------------------- utilities
 
 function str(value) {
@@ -121,6 +127,25 @@ function buildEntryIndex(entries) {
 
 // ------------------------------------------------------------ overrides
 
+// One canonical pin/identity-key validation path. `|` is the IPC pin-list
+// delimiter, so no valid key may contain it. Also rejected: empty strings,
+// NUL, C0 controls, DEL, and absurdly long keys. Valid desktop ids,
+// `class:<app-id>` keys, mixed-case ids and Unicode all pass.
+function isValidPinKey(key) {
+  var value = str(key)
+  if (!value) return false
+  if (value !== str(key).trim()) {
+    // Leading/trailing whitespace is normalized away, not rejected — but an
+    // all-whitespace key is empty after trimming.
+    if (!str(key).trim()) return false
+  }
+  var v = str(key).trim()
+  if (!v || v.length > MAX_PIN_KEY_LENGTH) return false
+  if (v.indexOf("|") !== -1) return false
+  if (/[\x00-\x1f\x7f]/.test(v)) return false
+  return true
+}
+
 // User config: [{ name?, matchClass, desktopId?, icon? }]. Invalid regexes are
 // skipped, never thrown. Overrides can only *name* a desktop id or icon;
 // there is deliberately no exec/command field.
@@ -128,10 +153,12 @@ function compileOverrides(matches) {
   var out = []
   var list = Array.isArray(matches) ? matches : []
   for (var i = 0; i < list.length; i++) {
+    if (out.length >= MAX_LIST_ENTRIES) break
     var m = list[i]
     if (!isPlainObject(m)) continue
     var pattern = str(m.matchClass || m.match)
     if (!pattern) continue
+    if (pattern.length > MAX_PATTERN_LENGTH) continue
     var re
     try { re = new RegExp(pattern, "i") } catch (e) { continue }
     out.push({
@@ -423,11 +450,14 @@ function buildGroups(windows, pins, mru, index, overrides) {
 }
 
 // Pins are stored as an array of identity keys. Accepts legacy objects
-// ({desktopId}) and strings; dedupes; drops garbage.
+// ({desktopId}) and strings; dedupes; drops garbage. Invalid keys (pipe,
+// control characters, overlong) are dropped, and the list is capped so an
+// accidental huge configuration cannot propagate.
 function normalizePins(pins) {
   var out = []
   var list = Array.isArray(pins) ? pins : []
   for (var i = 0; i < list.length; i++) {
+    if (out.length >= MAX_LIST_ENTRIES) break
     var item = list[i]
     var key = ""
     if (typeof item === "string") key = item.trim()
@@ -435,6 +465,7 @@ function normalizePins(pins) {
     if (!key) continue
     if (key.indexOf(CLASS_PREFIX) === 0) key = CLASS_PREFIX + lower(key.slice(CLASS_PREFIX.length))
     else key = stripDesktop(key)
+    if (!isValidPinKey(key)) continue
     if (out.indexOf(key) === -1) out.push(key)
   }
   return out
@@ -465,11 +496,14 @@ function movePin(pins, key, delta) {
 // ------------------------------------------------------------ width budget
 
 // Given the extent available along the bar axis, how many pinned cells fit.
-// available <= 0 means "unknown": show everything rather than flicker.
+// available <= 0 means "unknown": failure must remain bounded, so this
+// returns a conservative fallback (at most COLD_START_FALLBACK_PINS), never
+// the whole pin list. Callers that hold a last known good budget should
+// prefer fallbackVisibleCount() so a transient failure keeps the old budget.
 function visiblePinCount(available, cell, spacing, pinCount, fixedCells, separators) {
   var pins = Math.max(0, Math.floor(Number(pinCount) || 0))
   var avail = Number(available)
-  if (!(avail > 0)) return pins
+  if (!(avail > 0)) return Math.min(COLD_START_FALLBACK_PINS, pins)
   var cellExtent = Math.max(1, Number(cell) || 1)
   var gap = Math.max(0, Number(spacing) || 0)
   var fixed = Math.max(0, Math.floor(Number(fixedCells) || 0)) * (cellExtent + gap)
@@ -478,6 +512,16 @@ function visiblePinCount(available, cell, spacing, pinCount, fixedCells, separat
   if (room <= 0) return 0
   var n = Math.floor((room + gap) / (cellExtent + gap))
   return Math.max(0, Math.min(pins, n))
+}
+
+// Safe fallback when section discovery failed: keep the last known good
+// budget if one exists, otherwise show at most COLD_START_FALLBACK_PINS and
+// route the rest into Running. Never expands to every pin.
+function fallbackVisibleCount(pinCount, lastGood) {
+  var pins = Math.max(0, Math.floor(Number(pinCount) || 0))
+  var good = Math.floor(Number(lastGood))
+  if (isFinite(good) && good >= 0) return Math.max(0, Math.min(pins, good))
+  return Math.min(COLD_START_FALLBACK_PINS, pins)
 }
 
 // Available extent for a widget inside one bar section.
@@ -573,6 +617,39 @@ function decodeHexUtf8(hex) {
   return out
 }
 
+// Canonical runtime setting specification. This is the validator of record:
+// it must match manifest.json (see tests/test_manifest.js), and every
+// settings write — CLI, IPC, or persisted-state normalization — goes through
+// validateSetting(). Invalid enum values and out-of-range numbers are refused,
+// never silently persisted.
+var SETTING_SPEC = {
+  pins:             { type: "pins" },
+  matches:          { type: "matches" },
+  favorites:        { type: "favorites" },
+  iconSize:         { type: "integer", min: 12, max: 24, defaultValue: 18 },
+  spacing:          { type: "integer", min: 0, max: 12, defaultValue: 2 },
+  iconStyle:        { type: "enum", options: ["color", "mono"], defaultValue: "color" },
+  runningIndicator: { type: "enum", options: ["underline", "dot", "none"], defaultValue: "underline" },
+  separators:       { type: "boolean", defaultValue: true },
+  previews:         { type: "boolean", defaultValue: true },
+  previewDelay:     { type: "integer", min: 100, max: 1500, defaultValue: 450 },
+  animations:       { type: "boolean", defaultValue: true },
+  wheelCycle:       { type: "boolean", defaultValue: true },
+  middleClick:      { type: "enum", options: ["new-window", "none"], defaultValue: "new-window" },
+  showPlaces:       { type: "boolean", defaultValue: true },
+  showRunning:      { type: "boolean", defaultValue: true },
+  responsive:       { type: "boolean", defaultValue: true },
+  showDesktop:      { type: "boolean", defaultValue: true },
+  showDownloads:    { type: "boolean", defaultValue: true },
+  showDocuments:    { type: "boolean", defaultValue: true },
+  showPictures:     { type: "boolean", defaultValue: true },
+  showMusic:        { type: "boolean", defaultValue: true },
+  showVideos:       { type: "boolean", defaultValue: true },
+  showTrash:        { type: "boolean", defaultValue: true },
+  showMounts:       { type: "boolean", defaultValue: true }
+}
+
+// Legacy type map kept for IPC getSetting lookups.
 var SETTING_KEYS = {
   pins: "array", matches: "array", favorites: "array",
   iconSize: "integer", spacing: "integer", iconStyle: "string", runningIndicator: "string",
@@ -582,15 +659,79 @@ var SETTING_KEYS = {
   showPictures: "boolean", showMusic: "boolean", showVideos: "boolean", showTrash: "boolean", showMounts: "boolean"
 }
 
-// Validate one setting value against its declared type. Returns
+// Favorites stay path-only: objects carrying execution-oriented fields are
+// rejected outright, and configuration data is never executed.
+function validateFavorites(value) {
+  var list = Array.isArray(value) ? value : null
+  if (!list) return { ok: false, error: "favorites must be a JSON array" }
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    if (out.length >= MAX_LIST_ENTRIES) break
+    var item = list[i]
+    if (typeof item === "string") {
+      if (str(item).trim()) out.push(item)
+      continue
+    }
+    if (!isPlainObject(item)) continue
+    if ("exec" in item || "command" in item || "args" in item || "run" in item) continue
+    var favPath = str(item.path)
+    if (!favPath) continue
+    var fav = { path: item.path }
+    if (str(item.name)) fav.name = str(item.name)
+    out.push(fav)
+  }
+  return { ok: true, value: out }
+}
+
+function validateMatches(value) {
+  var list = Array.isArray(value) ? value : null
+  if (!list) return { ok: false, error: "matches must be a JSON array" }
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    if (out.length >= MAX_LIST_ENTRIES) break
+    var item = list[i]
+    if (!isPlainObject(item)) continue
+    var pattern = str(item.matchClass || item.match)
+    if (!pattern || pattern.length > MAX_PATTERN_LENGTH) continue
+    try { new RegExp(pattern, "i") } catch (e) { continue }
+    var rule = {}
+    for (var k in item) {
+      if (k === "exec" || k === "command" || k === "args" || k === "run") continue
+      rule[k] = item[k]
+    }
+    out.push(rule)
+  }
+  return { ok: true, value: out }
+}
+
+function validatePins(value) {
+  if (!Array.isArray(value)) return { ok: false, error: "pins must be a JSON array" }
+  return { ok: true, value: normalizePins(value) }
+}
+
+// Validate one setting value against the canonical spec. Returns
 // { ok, value } or { ok: false, error }.
 function validateSetting(key, value) {
-  var type = SETTING_KEYS[str(key)]
-  if (!type) return { ok: false, error: "unknown setting: " + str(key) }
-  if (type === "array") return Array.isArray(value) ? { ok: true, value: value } : { ok: false, error: key + " must be a JSON array" }
-  if (type === "boolean") return typeof value === "boolean" ? { ok: true, value: value } : { ok: false, error: key + " must be true or false" }
-  if (type === "integer") { var n = Number(value); return isFinite(n) ? { ok: true, value: Math.round(n) } : { ok: false, error: key + " must be a number" } }
-  return { ok: true, value: str(value) }
+  var name = str(key)
+  var spec = SETTING_SPEC[name]
+  if (!spec) return { ok: false, error: "unknown setting: " + name }
+  if (spec.type === "pins") return validatePins(value)
+  if (spec.type === "favorites") return validateFavorites(value)
+  if (spec.type === "matches") return validateMatches(value)
+  if (spec.type === "boolean") return typeof value === "boolean" ? { ok: true, value: value } : { ok: false, error: name + " must be true or false" }
+  if (spec.type === "integer") {
+    var n = Number(value)
+    if (!isFinite(n)) return { ok: false, error: name + " must be a number" }
+    n = Math.round(n)
+    if (n < spec.min || n > spec.max) return { ok: false, error: name + " must be " + spec.min + ".." + spec.max }
+    return { ok: true, value: n }
+  }
+  if (spec.type === "enum") {
+    var s = str(value)
+    if (spec.options.indexOf(s) === -1) return { ok: false, error: name + " must be one of: " + spec.options.join(", ") }
+    return { ok: true, value: s }
+  }
+  return { ok: false, error: "unknown setting: " + name }
 }
 
 // Location label for a window row: "Workspace 3 · DP-2".
@@ -611,6 +752,10 @@ function windowLocation(win) {
 if (typeof module !== "undefined") {
   module.exports = {
     CLASS_PREFIX: CLASS_PREFIX,
+    MAX_PIN_KEY_LENGTH: MAX_PIN_KEY_LENGTH,
+    MAX_LIST_ENTRIES: MAX_LIST_ENTRIES,
+    MAX_PATTERN_LENGTH: MAX_PATTERN_LENGTH,
+    COLD_START_FALLBACK_PINS: COLD_START_FALLBACK_PINS,
     stripDesktop: stripDesktop,
     prettyClassName: prettyClassName,
     chromeAppHost: chromeAppHost,
@@ -627,9 +772,11 @@ if (typeof module !== "undefined") {
     clickTarget: clickTarget,
     buildGroups: buildGroups,
     normalizePins: normalizePins,
+    isValidPinKey: isValidPinKey,
     togglePin: togglePin,
     movePin: movePin,
     visiblePinCount: visiblePinCount,
+    fallbackVisibleCount: fallbackVisibleCount,
     availableExtent: availableExtent,
     isDesktopId: isDesktopId,
     launchArgv: launchArgv,
@@ -639,6 +786,10 @@ if (typeof module !== "undefined") {
     windowLocation: windowLocation,
     decodeHexUtf8: decodeHexUtf8,
     validateSetting: validateSetting,
+    validatePins: validatePins,
+    validateFavorites: validateFavorites,
+    validateMatches: validateMatches,
+    SETTING_SPEC: SETTING_SPEC,
     SETTING_KEYS: SETTING_KEYS
   }
 }

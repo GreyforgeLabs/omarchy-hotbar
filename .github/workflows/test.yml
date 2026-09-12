@@ -1,0 +1,35 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq shellcheck
+      - name: Model tests
+        run: |
+          node tests/test_model.js
+          node tests/test_places.js
+          node tests/test_registry.js
+          node tests/test_manifest.js
+      - name: CLI lifecycle and retry tests
+        run: |
+          bash tests/test_lifecycle.sh
+          bash tests/test_retry.sh
+      - name: Syntax and manifest checks
+        run: |
+          bash -n bin/hotbar
+          bash -n bin/hotbar-places
+          bash -n tests/run.sh
+          bash -n tests/live/acceptance.sh
+          jq -e . manifest.json
+      - name: ShellCheck
+        run: shellcheck bin/hotbar bin/hotbar-places tests/run.sh tests/test_lifecycle.sh tests/test_retry.sh tests/live/acceptance.sh

@@ -20,7 +20,7 @@ pass() { echo "ok   $*"; }
 PIDS=()
 cleanup() {
   omarchy-shell hotbar close >/dev/null 2>&1 || true
-  for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
+  for p in "${PIDS[@]:-}"; do if [[ -n "$p" ]]; then kill "$p" 2>/dev/null || true; fi; done
   if [[ -n "${ORIGINAL_PINS+x}" ]]; then omarchy-shell hotbar setPins "$ORIGINAL_PINS" >/dev/null || true; fi
 }
 trap cleanup EXIT
@@ -125,7 +125,7 @@ pass "G5 activate focuses the group's MRU window"
 
 for which in places running class:hb.browser; do
   opened=""
-  for attempt in 1 2 3; do   # an outside click by a human dismisses a popover; retry
+  for _ in 1 2 3; do   # an outside click by a human dismisses a popover; retry
     omarchy-shell hotbar close >/dev/null; pause 0.3
     omarchy-shell hotbar open "$which" >/dev/null; pause 0.6
     opened=$(state | field "d['openPopover']")

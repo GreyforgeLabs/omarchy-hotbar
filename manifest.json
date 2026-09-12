@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "id": "greyforge.hotbar",
   "name": "Hotbar",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "Greyforge Labs",
   "license": "MIT",
   "homepage": "https://github.com/GreyforgeLabs/omarchy-hotbar",
-  "description": "Fixed app slots, filesystem Places, and one bounded drawer for everything else. Open fifty windows. Your bar stays put.",
+  "description": "Fixed app slots, filesystem Places, and one bounded drawer for everything else. Your bar stays put.",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "Hotbar.qml"
