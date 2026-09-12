@@ -11,9 +11,11 @@ Item {
   required property var hotbar          // the Hotbar root (theme, geometry, actions)
   property string tooltipText: ""
   property string accessibleName: ""
-  // Logical hover. Raw enter/exit flaps when a popup (tooltip, preview) maps
-  // under the bar — Qt delivers a leave and a fresh enter — so a short grace
-  // period absorbs that before the cell is considered left.
+  // Logical hover, used for preview timing. Raw enter/exit flaps when a
+  // popup (tooltip, preview) maps under the bar — Qt delivers a leave and a
+  // fresh enter — so a short grace period absorbs that before the cell is
+  // considered left. The hover fill itself follows the raw state so a sweep
+  // across the bar does not leave a trail of lit cells.
   property bool hovered: false
   readonly property bool tooltipHovered: visible && mouseArea.containsMouse
   property bool pressedState: mouseArea.pressed
@@ -81,7 +83,7 @@ Item {
       ? Style.pressedFillFor(root.foreground, root.accent)
       : (root.active
         ? Style.selectedFillFor(root.foreground, root.accent)
-        : (root.hovered && root.showHoverFill ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"))
+        : (mouseArea.containsMouse && root.showHoverFill ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"))
     Behavior on color {
       enabled: root.animate
       ColorAnimation { duration: 120; easing.type: Easing.OutCubic }

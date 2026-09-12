@@ -646,7 +646,10 @@ BarWidget {
   // The group the popover shows is looked up live so that a popover left
   // open while windows come and go always reflects the current state.
   readonly property var livePopoverGroup: popoverGroup ? groupByKey(popoverGroup.key) : null
-  onLivePopoverGroupChanged: if (openPopover === "app" && !livePopoverGroup) close()
+  // Deferred: close() clears popoverGroup, which would re-enter this binding
+  // from inside its own change handler.
+  onLivePopoverGroupChanged: if (openPopover === "app" && !livePopoverGroup) Qt.callLater(closeIfPopoverGroupGone)
+  function closeIfPopoverGroupGone() { if (openPopover === "app" && !livePopoverGroup) close() }
 
   // Hover previews: a passive strip, never coordinated with the bar.
   property bool previewOpen: false
@@ -1118,7 +1121,8 @@ BarWidget {
         previewGroup: root.previewGroup ? root.previewGroup.key : "",
         previewTimerRunning: previewTimer.running,
         previewDebug: root.previewDebug,
-        placesSections: root.placesSections.map(function(s) { return { id: s.id, rows: s.rows.map(function(r) { return r.name + " -> " + r.path }) } })
+        placesSections: root.placesSections.map(function(s) { return { id: s.id, rows: s.rows.map(function(r) { return r.name + " -> " + r.path }) } }),
+        cells: root.cellGeometry()
       })
     }
   }
@@ -1143,6 +1147,26 @@ BarWidget {
       }
     }
     return k
+  }
+
+  // Bar-window coordinates of every surface cell — for tests that need to
+  // point at a cell without guessing where the widget was placed.
+  function cellGeometry() {
+    var w = root.QsWindow.window
+    if (!w || !w.contentItem) return []
+    var out = []
+    function add(key, item) {
+      if (!item || !item.visible) return
+      var p = item.mapToItem(w.contentItem, 0, 0)
+      out.push({ key: key, x: Math.round(p.x), y: Math.round(p.y), w: Math.round(item.width), h: Math.round(item.height), hovered: item.hovered === true })
+    }
+    add("places", placesCellLoader.item)
+    for (var i = 0; i < pinGrid.children.length; i++) {
+      var c = pinGrid.children[i]
+      if (c && c.pinKey !== undefined) add(c.pinKey, c)
+    }
+    add("running", runningCellLoader.item)
+    return out
   }
 
   function cellFor(key) {
