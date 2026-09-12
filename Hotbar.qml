@@ -661,10 +661,18 @@ BarWidget {
   readonly property var visiblePins: pinnedGroups.slice(0, Math.max(0, Math.min(pinnedGroups.length, visiblePinCount)))
   readonly property var overflowPins: pinnedGroups.slice(Math.max(0, Math.min(pinnedGroups.length, visiblePinCount)))
 
+  property int layoutScanAttempts: 0
   Timer {
     id: layoutScanTimer
     interval: 250
-    onTriggered: { root.scanSections(); root.scheduleLayout() }
+    onTriggered: {
+      root.scanSections()
+      root.scheduleLayout()
+      // The bar may still be building its sections; look again a few times
+      // before settling for the unbounded fallback.
+      if (!root.region && root.layoutScanAttempts < 4) { root.layoutScanAttempts++; interval = 500; restart() }
+      else interval = 250
+    }
   }
 
   Connections {
