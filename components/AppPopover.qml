@@ -74,6 +74,11 @@ HotbarPopover {
         onActivate: function() { root.hotbar.closeAll(g); root.close() }
       })
     }
+    out.push({ kind: "separator" })
+    out.push({
+      kind: "row", primary: "Hotbar Settings…", glyph: "󰒓",
+      onActivate: function() { if (root.hotbar) root.hotbar.openSettingsPopover(root.hotbar.popoverAnchor) }
+    })
     return out
   }
 

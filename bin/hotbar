@@ -22,9 +22,12 @@ Pins
   pins clear             Remove every pin.
 
 Windows
-  open places|running    Open a popover.
+  open places|running|settings
+                     Open a popover.
   open <app>             Open an app's menu.
-  close                  Close any open Hotbar popover.
+                         Add --screen <name> to target another monitor's bar.
+  close [--screen <name>]
+                         Close any open Hotbar popover.
   activate <app>         Launch / focus / cycle like a left click.
   activate <n>           Same for pinned slot n (1-based) — bind it to Super+n.
   new <app>              Open a new window like a middle click.
@@ -79,9 +82,12 @@ case "$cmd" in
       *) echo "hotbar pins [set <app>...|clear]" >&2; exit 1 ;;
     esac ;;
   open)
-    [[ -n "${1:-}" ]] || { echo "hotbar open places|running|<app>" >&2; exit 1; }
-    need_shell; ipc open "$1" ;;
-  close) need_shell; ipc close ;;
+    [[ -n "${1:-}" ]] || { echo "hotbar open places|running|settings|<app> [--screen <name>]" >&2; exit 1; }
+    need_shell
+    if [[ "${2:-}" == --screen && -n "${3:-}" ]]; then ipc openOn "$3" "$1"; else ipc open "$1"; fi ;;
+  close)
+    need_shell
+    if [[ "${1:-}" == --screen && -n "${2:-}" ]]; then ipc closeOn "$2"; else ipc close; fi ;;
   activate)
     [[ -n "${1:-}" ]] || { echo "hotbar activate <app|n>" >&2; exit 1; }
     need_shell

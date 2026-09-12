@@ -2,7 +2,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Shared popover chrome for Places, App and Running: a KeyboardPanel (the
+// Shared popover chrome for Places, App, Running and Settings: a KeyboardPanel (the
 // host's own click/keyboard panel surface) holding a title line and a flat
 // list of rows. Rows are plain objects:
 //   { kind: "header",    title }
@@ -18,7 +18,7 @@ KeyboardPanel {
   id: root
 
   required property var hotbar
-  // Which of Hotbar's popovers this is ("places" | "app" | "running"). The
+  // Which of Hotbar's popovers this is ("places" | "app" | "running" | "settings"). The
   // owner object below is what the bar's popout coordinator holds; its
   // close() only acts when this popover is still the one that is open, so
   // switching from one Hotbar popover to another cannot close the new one.

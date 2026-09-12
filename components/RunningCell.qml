@@ -25,7 +25,7 @@ HotbarCell {
   accessibleName: "Running applications"
   indicator: anyFocused ? "focused" : (itemCount > 0 ? "running" : "none")
   urgent: anyUrgent
-  active: hotbar && hotbar.openPopover === "running"
+  active: hotbar && (hotbar.openPopover === "running" || hotbar.openPopover === "settings")
 
 
   Text {
@@ -40,7 +40,8 @@ HotbarCell {
 
   onPressed: function(button) {
     if (!hotbar) return
-    if (button === Qt.LeftButton || button === Qt.RightButton) hotbar.openRunningPopover(root)
+    if (button === Qt.RightButton) hotbar.openSettingsPopover(root)
+    else if (button === Qt.LeftButton) hotbar.openRunningPopover(root)
   }
 
   onWheelMoved: function(delta) {

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 — 2026-09-12
+
+- Hotbar Settings popover: every toggle the widget honours, flipped from
+  the bar (appearance, behaviour, visible cells, Places sections).
+  Reachable from Places right-click, the Places/App popover rows, the
+  `settings` IPC target and `hotbar open settings`.
+- Multi-screen IPC: each bar instance registers by screen name
+  (`HotbarRegistry.js`); `openOn`/`closeOn`/`screens` forward to the
+  sibling on the addressed monitor. CLI gains `--screen <name>`.
+- Places cell reworked as a miniature hotbar glyph; active while Places
+  or Settings is open.
+
 ## 0.1.1 — 2026-09-12
 
 Audit release: same surface, less work per event.

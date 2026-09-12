@@ -27,7 +27,25 @@ HotbarPopover {
         out.push(makeRow(place))
       }
     }
+    // Settings stays reachable from the keyboard without leaving the
+    // popover. Gated on non-empty so the "No places found." empty state
+    // keeps working.
+    if (out.length) {
+      out.push({ kind: "separator" })
+      out.push(settingsRow())
+    }
     return out
+  }
+
+  function settingsRow() {
+    return {
+      kind: "row",
+      primary: "Hotbar Settings…",
+      glyph: "󰒓",
+      onActivate: function() {
+        if (root.hotbar) root.hotbar.openSettingsPopover(root.hotbar.popoverAnchor)
+      }
+    }
   }
 
   function makeRow(place) {

@@ -7,6 +7,7 @@ import qs.Commons
 import qs.Ui
 import "HotbarModel.js" as Model
 import "PlacesModel.js" as Places
+import "HotbarRegistry.js" as Registry
 import "components"
 
 // Hotbar — Places, pinned apps, and one Running drawer.
@@ -350,6 +351,16 @@ BarWidget {
   // A theme switch may bring a different icon theme; drop cached lookups.
   onForegroundChanged: iconCache = ({})
 
+  // Screen-addressed IPC: every instance announces itself by screen name.
+  readonly property string screenName: QsWindow.window && QsWindow.window.screen ? QsWindow.window.screen.name : ""
+  property string registeredScreen: ""
+  onScreenNameChanged: {
+    Registry.unregister(registeredScreen, root)
+    registeredScreen = screenName
+    Registry.register(registeredScreen, root)
+  }
+  Component.onDestruction: Registry.unregister(registeredScreen, root)
+
   Component.onCompleted: {
     refreshEntryIndex()
     Hyprland.refreshToplevels()
@@ -604,7 +615,7 @@ BarWidget {
 
   // Exactly one of Hotbar's popovers is open at a time, and the bar's own
   // coordinator closes it when another widget opens a panel.
-  property string openPopover: ""      // "" | "places" | "app" | "running"
+  property string openPopover: ""      // "" | "places" | "app" | "running" | "settings"
   property var popoverGroup: null
   property Item popoverAnchor: null
   readonly property bool opened: openPopover !== ""
@@ -635,12 +646,31 @@ BarWidget {
     openPopover = "app"
   }
 
+  function openByName(which) {
+    var w = String(which || "")
+    if (w === "places") { openPlacesPopover(placesCellLoader.item || root); return "ok" }
+    if (w === "running") { openRunningPopover(runningCellLoader.item || root); return "ok" }
+    if (w === "settings") { openSettingsPopover(popoverAnchor || placesCellLoader.item || root); return "ok" }
+    var g = groupByKey(w)
+    if (!g) return "unknown"
+    openAppPopover(g, cellFor(w) || root)
+    return "ok"
+  }
+
   function openRunningPopover(anchor) {
     hidePreview()
     if (openPopover === "running") { close(); return }
     popoverAnchor = anchor
     popoverGroup = null
     openPopover = "running"
+  }
+
+  function openSettingsPopover(anchor) {
+    hidePreview()
+    if (openPopover === "settings") { close(); return }
+    popoverAnchor = anchor || popoverAnchor
+    popoverGroup = null
+    openPopover = "settings"
   }
 
   // The group the popover shows is looked up live so that a popover left
@@ -1040,17 +1070,27 @@ BarWidget {
       return JSON.stringify(v === undefined ? null : v)
     }
 
-    function open(which: string): string {
-      var w = String(which || "")
-      if (w === "places") { root.openPlacesPopover(placesCellLoader.item || root); return "ok" }
-      if (w === "running") { root.openRunningPopover(runningCellLoader.item || root); return "ok" }
-      var g = root.groupByKey(w)
-      if (!g) return "unknown"
-      root.openAppPopover(g, root.cellFor(w) || root)
+    function open(which: string): string { return root.openByName(which) }
+
+    function close(): void { root.close() }
+
+    // Same, on the bar of a named screen (`hyprctl monitors`). Only one
+    // instance owns this IPC target, so these forward to the sibling
+    // instance registered for that screen.
+    function openOn(screen: string, which: string): string {
+      var inst = Registry.lookup(screen)
+      if (!inst) return "unknown screen " + screen + " (" + Registry.screens().join(", ") + ")"
+      return inst.openByName(which)
+    }
+
+    function closeOn(screen: string): string {
+      var inst = Registry.lookup(screen)
+      if (!inst) return "unknown screen " + screen
+      inst.close()
       return "ok"
     }
 
-    function close(): void { root.close() }
+    function screens(): string { return Registry.screens().join("|") }
 
     function activate(key: string): string {
       var g = root.groupByKey(String(key || ""))
@@ -1199,6 +1239,12 @@ BarWidget {
     hotbar: root
     anchorItem: root.popoverAnchor || root
     open: root.openPopover === "running"
+  }
+
+  SettingsPopover {
+    hotbar: root
+    anchorItem: root.popoverAnchor || root
+    open: root.openPopover === "settings"
   }
 
   PreviewPopover {

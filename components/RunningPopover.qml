@@ -45,6 +45,17 @@ HotbarPopover {
       out.push({ kind: "header", title: "Running" })
       for (var j = 0; j < run.length; j++) out.push(groupRow(run[j]))
     }
+    if (out.length) {
+      out.push({ kind: "separator" })
+      out.push({
+        kind: "row",
+        primary: "Hotbar Settings…",
+        glyph: "󰒓",
+        onActivate: function() {
+          if (root.hotbar) root.hotbar.openSettingsPopover(root.hotbar.popoverAnchor)
+        }
+      })
+    }
     return out
   }
 

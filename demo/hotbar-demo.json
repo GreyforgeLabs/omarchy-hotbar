@@ -1,0 +1,247 @@
+{
+ "schema_version": 2,
+ "format": "landscape",
+ "fps": 30,
+ "assets": {
+  "hero": {
+   "path": "clips/hero.mp4",
+   "sha256": "a1a14df3551f7139acbeb5d4c6dc1c97ccef9591b14c9af8d4cde099469374f1"
+  },
+  "flood": {
+   "path": "clips/flood.mp4",
+   "sha256": "0bd63331de98a6e9b48256d749a143a71b1a0f45f287f94407c676bc9cf806b4"
+  },
+  "places": {
+   "path": "clips/places.mp4",
+   "sha256": "47871bfdb70fe356b4612633f32f7ae8f7848553eec539498d988d73b4355e4c"
+  },
+  "appmenu": {
+   "path": "clips/appmenu.mp4",
+   "sha256": "f57614cc3cab1a3591708264d5e80c0138270cc93eb86234a3534189b2359a02"
+  },
+  "running": {
+   "path": "clips/running.mp4",
+   "sha256": "7c1c8f6a6af0c2701f73c1ac75a61d4441ee519cae7e06b4c7185e5fd5e6b78a"
+  },
+  "c1": {
+   "path": "narration/c1.wav",
+   "sha256": "749db19777fb2155f69ff1a9d70ea23dab2bc3bc5feb8de5c997353e756f5561"
+  },
+  "c2": {
+   "path": "narration/c2.wav",
+   "sha256": "2df58466c0d9bb58c299ae6129c5072791933f2b808fad1036aff6961c22e28f"
+  },
+  "c3": {
+   "path": "narration/c3.wav",
+   "sha256": "e34fb2b7e6cc87ede6586c8bce99893a1853b2492522a8d648da8aabd57f47d1"
+  },
+  "c4": {
+   "path": "narration/c4.wav",
+   "sha256": "225d3aa8e4f1401949d53a1e934c68b308679204914fd9982c3baed2682d5132"
+  },
+  "c5": {
+   "path": "narration/c5.wav",
+   "sha256": "38bfc5e7d310fe332113b5ba32a546680cf8244cb107fa7a3302235e64091607"
+  },
+  "c6": {
+   "path": "narration/c6.wav",
+   "sha256": "f97f81e3004ef1b357c6f09912f38ddf966326bdc9fc1916c853d78111e2f26f"
+  },
+  "c7": {
+   "path": "narration/c7.wav",
+   "sha256": "cd5fe5ebc3f968e514d651f93fce821efdd82846405595d20c14490408491b8c"
+  },
+  "c8": {
+   "path": "narration/c8.wav",
+   "sha256": "b886be02eabbf6380d8752ed42bfb16f0df3649d31742a22e30e7a5925007a49"
+  }
+ },
+ "scenes": [
+  {
+   "type": "video",
+   "title": "Hotbar",
+   "asset": "hero",
+   "start": 0.2,
+   "speed": 1,
+   "duration": 6.65,
+   "fit": "cover",
+   "layout": "full"
+  },
+  {
+   "type": "steps",
+   "title": "Why we built it",
+   "duration": 11.17,
+   "items": [
+    {
+     "at": 0.0,
+     "text": "Every panel we tried paints every window onto the bar"
+    },
+    {
+     "at": 3.2,
+     "text": "Thirty windows: the bar becomes a second problem to manage"
+    },
+    {
+     "at": 6.4,
+     "text": "Icons shift, titles change"
+    },
+    {
+     "at": 8.4,
+     "text": "Your pins get pushed around"
+    }
+   ]
+  },
+  {
+   "type": "video",
+   "title": "The opposite position",
+   "asset": "flood",
+   "start": 1.0,
+   "speed": 1,
+   "duration": 8.83,
+   "fit": "cover",
+   "layout": "full"
+  },
+  {
+   "type": "video",
+   "title": "Places",
+   "asset": "places",
+   "start": 0.9,
+   "speed": 1,
+   "duration": 5.41,
+   "fit": "cover",
+   "layout": "full"
+  },
+  {
+   "type": "video",
+   "title": "Pinned apps",
+   "asset": "appmenu",
+   "start": 0.3,
+   "speed": 1,
+   "duration": 8.41,
+   "fit": "cover",
+   "layout": "full"
+  },
+  {
+   "type": "video",
+   "title": "Running",
+   "asset": "running",
+   "start": 0.9,
+   "speed": 1,
+   "duration": 5.46,
+   "fit": "cover",
+   "layout": "full"
+  },
+  {
+   "type": "terminal",
+   "title": "Under the hood",
+   "duration": 6.72,
+   "lines": [
+    "$ hotbar doctor",
+    "no daemon, no polling, no telemetry, no network",
+    "focus change: < 1 ms of shell time",
+    "launch = argv array; window action = Hyprland dispatcher",
+    "41 model tests + live acceptance run against the shell",
+    "$ omarchy plugin remove greyforge.hotbar   # leaves nothing behind"
+   ]
+  },
+  {
+   "type": "title",
+   "title": "Hotbar by Greyforge Labs",
+   "duration": 5.56,
+   "body": "Your apps stay put. Your places stay close. Your windows stay under control.  \u2014  omarchy plugin add https://github.com/GreyforgeLabs/omarchy-hotbar.git --enable"
+  }
+ ],
+ "audio": {
+  "narration": [
+   {
+    "asset": "c1",
+    "at": 0.25,
+    "duration": 5.93,
+    "gain_db": 0
+   },
+   {
+    "asset": "c2",
+    "at": 6.9,
+    "duration": 10.65,
+    "gain_db": 0
+   },
+   {
+    "asset": "c3",
+    "at": 18.07,
+    "duration": 8.31,
+    "gain_db": 0
+   },
+   {
+    "asset": "c4",
+    "at": 26.9,
+    "duration": 4.89,
+    "gain_db": 0
+   },
+   {
+    "asset": "c5",
+    "at": 32.31,
+    "duration": 7.89,
+    "gain_db": 0
+   },
+   {
+    "asset": "c6",
+    "at": 40.72,
+    "duration": 4.94,
+    "gain_db": 0
+   },
+   {
+    "asset": "c7",
+    "at": 46.18,
+    "duration": 6.2,
+    "gain_db": 0
+   },
+   {
+    "asset": "c8",
+    "at": 52.9,
+    "duration": 4.64,
+    "gain_db": 0
+   }
+  ]
+ },
+ "markers": [
+  {
+   "scene": 0,
+   "at": 0,
+   "label": "Hotbar"
+  },
+  {
+   "scene": 1,
+   "at": 0,
+   "label": "Why we built it"
+  },
+  {
+   "scene": 2,
+   "at": 0,
+   "label": "The opposite position"
+  },
+  {
+   "scene": 3,
+   "at": 0,
+   "label": "Places"
+  },
+  {
+   "scene": 4,
+   "at": 0,
+   "label": "Pinned apps"
+  },
+  {
+   "scene": 5,
+   "at": 0,
+   "label": "Running"
+  },
+  {
+   "scene": 6,
+   "at": 0,
+   "label": "Under the hood"
+  },
+  {
+   "scene": 7,
+   "at": 0,
+   "label": "Hotbar by Greyforge Labs"
+  }
+ ]
+}

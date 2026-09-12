@@ -1,1 +1,5 @@
 .sync.sh
+# Demo build scratch — only the final mp4 + json ship.
+demo/clips/
+demo/narration/
+demo/render/
