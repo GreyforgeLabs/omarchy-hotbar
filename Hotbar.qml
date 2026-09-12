@@ -8,6 +8,7 @@ import qs.Ui
 import "HotbarModel.js" as Model
 import "PlacesModel.js" as Places
 import "HotbarRegistry.js" as Registry
+import "WarpModel.js" as Warp
 import "components"
 
 // Hotbar — Places, pinned apps, and one Running drawer.
@@ -613,6 +614,89 @@ BarWidget {
   function openPlace(path) {
     var argv = Places.openArgv(path)
     if (argv) Quickshell.execDetached(argv)
+  }
+
+  // -------------------------------------------------- cursor warp (0.2.3)
+
+  // "Keep pointer in place" toggle state. The 0.2.2 `hotbar warp` CLI is
+  // the source of truth; this only queries it (on Settings open) and runs
+  // it (on toggle) through discrete argv — no shell, no duplicated config
+  // handling. warpState: "disabled" (warps off, Keep ON) | "enabled"
+  // (warps on, Keep OFF) | "unknown" (indeterminate, never guessed).
+  // warpBusy covers the opening query and the apply+re-read cycle; the UI
+  // shows "…" and disables the row rather than claiming a state.
+  property string warpState: "unknown"
+  property bool warpBusy: false
+  property string warpError: ""
+  property string warpDetails: ""
+
+  function refreshWarpState() {
+    var argv = Warp.warpArgv(pluginDir, "status")
+    if (!argv) { warpState = "unknown"; warpDetails = ""; warpBusy = false; return }
+    warpBusy = true
+    warpStatusProc.command = argv
+    warpStatusProc.running = true
+  }
+
+  // keepOn=true (Keep ON) => `warp off`; false => `warp on`. Never sets
+  // warpState optimistically: the row stays busy until the post-apply
+  // re-read confirms the real state. Failures keep the inline error and
+  // restore the control to the re-read real state.
+  function setKeepPointerInPlace(keepOn) {
+    var mode = Warp.warpModeForKeep(keepOn)
+    if (!mode) return
+    var argv = Warp.warpArgv(pluginDir, mode)
+    if (!argv) { warpError = Warp.APPLY_ERROR; return }
+    warpError = ""
+    warpBusy = true
+    warpApplyProc.command = argv
+    warpApplyProc.running = true
+  }
+
+  Process {
+    id: warpStatusProc
+    stdout: StdioCollector { id: warpStatusOut }
+    onExited: function(exitCode, exitStatus) {
+      var parsed = Warp.parseWarpStatus(warpStatusOut.text, exitCode)
+      root.warpState = parsed.state
+      root.warpDetails = parsed.details
+      root.warpBusy = false
+    }
+    onErrorOccurred: function(error) {
+      console.warn("Hotbar: warp status helper failed (" + error + ")")
+      root.warpState = "unknown"
+      root.warpDetails = ""
+      root.warpBusy = false
+    }
+  }
+
+  Process {
+    id: warpApplyProc
+    stdout: StdioCollector { id: warpApplyOut }
+    stderr: StdioCollector { id: warpApplyErr }
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode !== 0) {
+        root.warpError = Warp.APPLY_ERROR
+        console.warn("Hotbar: warp apply failed (exit " + exitCode + "): " + warpApplyOut.text + " " + warpApplyErr.text)
+      }
+      // Re-read the real state either way; the control follows what the
+      // compositor confirms, never what was requested.
+      root.refreshWarpState()
+    }
+    onErrorOccurred: function(error) {
+      console.warn("Hotbar: warp apply helper failed (" + error + ")")
+      root.warpError = Warp.APPLY_ERROR
+      root.refreshWarpState()
+    }
+  }
+
+  // Real state on every Settings open (external changes picked up); idle
+  // otherwise — no polling.
+  onOpenPopoverChanged: {
+    if (openPopover === "settings") {
+      warpError = ""
+      refreshWarpState()
+    }
   }
 
   // ------------------------------------------------------------ popovers

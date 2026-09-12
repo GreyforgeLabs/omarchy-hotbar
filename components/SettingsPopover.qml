@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../WarpModel.js" as Warp
 
 // Hotbar Settings: every toggle the widget honours, flipped from the bar.
 // Booleans toggle on click; enums cycle (left = next, right = previous);
@@ -7,6 +8,12 @@ import qs.Commons
 // go through persistSettings, so shell.json and the backup mirror stay in
 // sync. Pins, favourites and match overrides stay in the CLI — they are
 // lists, not toggles.
+//
+// "Keep pointer in place" is not a bar setting: it reflects the real
+// Hyprland cursor-warp state via the 0.2.2 `hotbar warp` backend (queried
+// fresh on every open, confirmed again after each change). Keep ON means
+// warps are disabled (`warp off`); Keep OFF restores Omarchy defaults
+// (`warp on`). Unknown state never guesses — it shows Unavailable.
 HotbarPopover {
   id: root
   kind: "settings"
@@ -19,7 +26,8 @@ HotbarPopover {
     // Dependencies: rebuild when the settings change or the popover opens.
     var dep = hotbar ? hotbar.effectiveSettings : null
     var depOpen = open
-    if (!open && !dep) return []
+    var warpDep = hotbar ? String(hotbar.warpState) + "|" + String(hotbar.warpBusy) + "|" + String(hotbar.warpError) : ""
+    if (!open && !dep && !warpDep) return []
     return buildRows()
   }
 
@@ -84,6 +92,26 @@ HotbarPopover {
     }
   }
 
+  function warpRow() {
+    var state = hotbar ? String(hotbar.warpState || "unknown") : "unknown"
+    var busy = hotbar ? hotbar.warpBusy === true : false
+    var w = Warp.rowData(state, busy)
+    return {
+      kind: "row",
+      primary: w.primary,
+      secondary: w.secondary,
+      trailing: w.trailing,
+      glyph: w.glyph,
+      enabled: w.enabled,
+      onActivate: function() {
+        if (!root.hotbar || root.hotbar.warpBusy === true) return
+        var keep = Warp.keepPointerInPlace(String(root.hotbar.warpState || "unknown"))
+        if (keep === null || keep === undefined) return
+        root.hotbar.setKeepPointerInPlace(!keep)
+      }
+    }
+  }
+
   function buildRows() {
     if (!hotbar) return []
     var out = []
@@ -100,6 +128,13 @@ HotbarPopover {
     out.push(boolRow("Mouse wheel cycles windows", "wheelCycle", true))
     out.push(enumRow("Middle click", "middleClick", ["new-window", "none"], "new-window"))
     out.push(boolRow("Responsive overflow", "responsive", true))
+    out.push(warpRow())
+    if (String(hotbar.warpError || "") !== "") {
+      out.push({
+        kind: "row", primary: String(hotbar.warpError), secondary: "",
+        glyph: "󰀨", danger: true, enabled: false, onActivate: function() {}
+      })
+    }
     out.push({ kind: "header", title: "Visible cells" })
     out.push(boolRow("Show Places", "showPlaces", true))
     out.push(boolRow("Show Running drawer", "showRunning", true))

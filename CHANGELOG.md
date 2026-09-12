@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.3 — 2026-09-12
+
+- Expose the 0.2.2 cursor-warp control in Hotbar Settings as
+  **Keep pointer in place**.
+- The toggle reflects the real Hyprland state whenever Settings opens,
+  uses the existing safe `hotbar warp off|on` backend, and confirms the
+  resulting state after changes.
+- Clearly indicates that the setting applies system-wide to Hyprland.
+
 ## 0.2.2 — 2026-09-12
 
 - Cursor warps: `hotbar warp status|off|on` plus a `hotbar doctor` warp

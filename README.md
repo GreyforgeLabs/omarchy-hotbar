@@ -43,7 +43,7 @@ The app menu lists every window with its workspace and monitor, plus pin/unpin, 
 
 ## Settings
 
-Right-click Places and pick *Hotbar Settings* — appearance, behaviour, visible cells, and Places sections are all there. Changes apply immediately and are validated before they are written.
+Right-click Places and pick *Hotbar Settings* — appearance, behaviour, visible cells, and Places sections are all there. Changes apply immediately and are validated before they are written. Behaviour also holds **Keep pointer in place**, which stops Hyprland moving the pointer when Hotbar focuses a window (system-wide; same as `hotbar warp off`).
 
 The CLI covers the same settings for scripting:
 
@@ -82,7 +82,9 @@ hotbar doctor        # also reports the warp state with the fix hint
 ```
 
 `warp off|on` writes one marked block, backs up the file first, and runs
-`hyprctl reload`. It never touches `/usr/share/omarchy/`.
+`hyprctl reload`. It never touches `/usr/share/omarchy/`. The same control
+is in *Hotbar Settings* as **Keep pointer in place** (ON = warps disabled),
+which always shows the real Hyprland state when Settings opens.
 
 ## Compatibility and safety
 

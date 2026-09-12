@@ -20,6 +20,7 @@ jobs:
           node tests/test_places.js
           node tests/test_registry.js
           node tests/test_manifest.js
+          node tests/test_warp_ui.js
       - name: CLI lifecycle and retry tests
         run: |
           bash tests/test_lifecycle.sh

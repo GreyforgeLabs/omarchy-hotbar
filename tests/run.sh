@@ -7,6 +7,7 @@ node tests/test_model.js
 node tests/test_places.js
 node tests/test_registry.js
 node tests/test_manifest.js
+node tests/test_warp_ui.js
 bash tests/test_lifecycle.sh
 bash tests/test_retry.sh
 bash tests/test_warp.sh
