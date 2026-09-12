@@ -1,26 +1,46 @@
-# Hotbar
+![HOTBAR — A smarter panel for Omarchy](docs/assets/HOTBAR-BRAND-BANNER.png)
 
-**Hotbar gives Omarchy fixed app slots, filesystem Places, and one bounded drawer for everything else. Open fifty windows. Your bar stays put.**
+# 🔥 Hotbar
+
+**Fixed app slots, filesystem Places, and one bounded drawer for everything else. Open fifty windows. Your bar stays put.**
 
 ```
 [📁] │ [🌐] [>_] [T3] [🎵] │ [⋯]
 ```
 
 Hotbar is a native Omarchy bar widget for people who reach for the mouse. It
-is not a taskbar clone and not a dock. It is a small row of stable targets:
+is not a taskbar clone and not a dock. It is a small row of stable targets —
+a game hotbar for your desktop: fixed slots for the things you touch
+constantly, with everything else one click behind them:
 
-- **Places** — Home, your XDG folders, favourites, mounted drives, Trash, and
-  the default file manager. One click to any of them.
-- **Pinned apps** — apps you chose, in the order you chose. Launch, focus,
-  cycle, preview. They never move because something else opened.
-- **Running** — one cell holding every unpinned app and every pin that did
-  not fit. Thirty stray windows cost you one icon.
+| | | |
+|---|---|---|
+| 📁 **Places** | 📌 **Pinned apps** | ⋯ **Running** |
+| Home, your XDG folders, favourites, mounted drives, Trash, and the default file manager. One click to any of them. | Apps you chose, in the order you chose. Launch, focus, cycle, preview. They never move because something else opened. | One cell holding every unpinned app and every pin that did not fit. Thirty stray windows cost you one icon. |
 
 One application is always one cell, whether it has zero windows or twenty.
 Window titles never touch the bar. When the bar gets crowded, Hotbar gives
 space back before it collides with anything else.
 
-## Install
+> **Your apps stay put. Your places stay close. Your windows stay under control.** 🔥
+
+## ✨ New in 0.2.0
+
+- **⚙️ Settings popover** — every toggle the widget honours, flipped straight
+  from the bar. Right-click Places, or pick *Hotbar Settings…* in any popover.
+- **🖥️ Multi-screen IPC** — each bar registers by screen name, so
+  `hotbar open … --screen <name>` targets the right monitor's bar.
+- **📁 Places, reworked** — a miniature-hotbar glyph that reads as Hotbar
+  itself, active while Places or Settings is open.
+- 🎬 Demo video checked in under `demo/`.
+
+## 🎬 Demo
+
+https://github.com/GreyforgeLabs/omarchy-hotbar/blob/master/demo/hotbar-demo.mp4
+
+*(Local copy: [`demo/hotbar-demo.mp4`](demo/hotbar-demo.mp4))*
+
+## 🚀 Install
 
 ```bash
 omarchy plugin add https://github.com/GreyforgeLabs/omarchy-hotbar.git --enable
@@ -36,30 +56,37 @@ row, or right-click an app → *Pin to Hotbar*), or from a terminal:
 
 Requires Omarchy 4.x (Quattro) with Hyprland ≥ 0.53 in Lua-config mode.
 
-## Using it
+## 🖱️ Using it
 
 | Target | Left | Middle | Right | Wheel | Hover |
 |---|---|---|---|---|---|
-| Places | open Places | open Home in the file manager | — | — | tooltip |
-| App | launch · focus MRU window · cycle windows | new window | app menu | cycle windows | tooltip, then live previews |
-| Running | open drawer | — | open drawer | cycle drawer windows | tooltip |
+| 📁 Places | open Places | open Home in the file manager | open Settings | — | tooltip |
+| 📌 App | launch · focus MRU window · cycle windows | new window | app menu | cycle windows | tooltip, then live previews |
+| ⋯ Running | open drawer | — | open drawer | cycle drawer windows | tooltip |
 
 **App menu** (right-click): every window with a thumbnail and its
 workspace/monitor, then *New Window*, *Pin/Unpin*, *Move Left/Right*, *Close
-Current Window*, *Close All*. Middle-click a window row to close it.
+Current Window*, *Close All*, plus *Hotbar Settings…*. Middle-click a window
+row to close it.
 
 **Running drawer**: pinned overflow first, then unpinned apps. Left click
 focuses (same MRU rules as a pin), right click or → opens that app's menu,
 middle click pins it.
 
+**Settings** (right-click Places, or *Hotbar Settings…* anywhere): appearance,
+behaviour, visible cells and Places sections — flipped from the bar, written
+through the same validated path as the CLI. Pins, favourites and match
+overrides stay in the CLI; they are lists, not toggles.
+
 **Keyboard** inside any popover: ↑/↓ or j/k move, Enter opens, → opens a
 submenu, x closes the window under the cursor, Home/End jump, Esc closes.
 
-## Settings
+## ⚙️ Settings
 
 Everything lives in the widget's entry in `~/.config/omarchy/shell.json`.
-Change values with the CLI (it validates them) — `omarchy bar set` cannot
-carry arrays through the shell's IPC:
+Flip toggles in the on-bar Settings popover, or change values with the CLI
+(it validates them) — `omarchy bar set` cannot carry arrays through the
+shell's IPC:
 
 ```bash
 hotbar set iconSize 20
@@ -91,7 +118,7 @@ hotbar get pins
 There is deliberately no exec/command field anywhere. Favourites are paths;
 overrides name a desktop id. Nothing in the configuration can run a command.
 
-## How identity works
+## 🧠 How identity works
 
 Every window is mapped to one *application group*, in this order:
 
@@ -111,7 +138,7 @@ Every window is mapped to one *application group*, in this order:
 `hotbar identify` prints the decision for every open window, which is what
 you need to write an override.
 
-## Keyboard shortcuts to slots
+## ⌨️ Keyboard shortcuts to slots
 
 Hotbar never edits your Hyprland config, but its slots are addressable, so
 you can bind them yourself in `~/.config/hypr/bindings.lua`:
@@ -127,30 +154,38 @@ end
 (Adapt to the binding helper your Omarchy version ships; the IPC call is
 the stable part.)
 
-## CLI
+## 💻 CLI
 
 `bin/hotbar` — `pin`, `unpin`, `pins [set …|clear]`, `open`, `close`,
 `activate`, `identify`, `set`, `get`, `state`, `install`, `doctor`. It only
 talks to the widget's `hotbar` IPC target (`omarchy-shell hotbar …`).
 
-## Behaviour guarantees
+```bash
+hotbar open places|running|settings|<app> [--screen <name>]  # popover, optionally on another monitor's bar
+hotbar close [--screen <name>]
+hotbar activate <app|n>      # launch / focus / cycle — bind Super+n to a slot
+hotbar identify              # how every open window was grouped
+hotbar state                 # full model snapshot for scripting
+```
 
-- One app = one cell. Window count, titles and tabs never change the bar.
-- Pins never reorder on their own.
-- Unpinned apps never take permanent space.
-- Popovers open inward on the monitor whose bar you clicked; top, bottom,
+## 🛡️ Behaviour guarantees
+
+- 🔥 One app = one cell. Window count, titles and tabs never change the bar.
+- 📌 Pins never reorder on their own.
+- ⋯ Unpinned apps never take permanent space.
+- 🖥️ Popovers open inward on the monitor whose bar you clicked; top, bottom,
   left and right bars all work.
-- Idle cost is zero: no polling, no daemon, no filesystem crawling. Places
+- ⚡ Idle cost is zero: no polling, no daemon, no filesystem crawling. Places
   runs one short helper (`findmnt` + `test -d` + one `jq`, ~15 ms) when it
   opens; a focus change costs the shell under a millisecond.
-- Security: no `sudo`, no network, no telemetry, no shell interpolation —
+- 🔒 Security: no `sudo`, no network, no telemetry, no shell interpolation —
   every launch is an argv array, every window action is a Hyprland
   dispatcher with a sanitised hex address.
-- Failure containment: a missing desktop entry, unplugged mount, dead
+- 🧯 Failure containment: a missing desktop entry, unplugged mount, dead
   favourite, malformed config or vanished window degrades to "not shown",
   never to a crash or a config rewrite.
 
-## Uninstall
+## 🗑️ Uninstall
 
 ```bash
 omarchy plugin remove greyforge.hotbar
@@ -160,7 +195,7 @@ Nothing else is left behind: no process, no service, no root files, no
 Hyprland changes. The widget's settings live inside `shell.json` and follow
 Omarchy's normal handling of removed widgets.
 
-## Development
+## 🛠️ Development
 
 ```bash
 node tests/test_model.js && node tests/test_places.js   # pure model, no shell needed
@@ -170,4 +205,6 @@ tests/live/acceptance.sh                               # the §70 "brutal scenar
 See `docs/PLATFORM-AUDIT.md` for what the host actually provides and
 `docs/QUALIFICATION.md` for the release-gate record.
 
-MIT — Hotbar by Greyforge Labs.
+---
+
+MIT — Hotbar by Greyforge Labs 🔥
