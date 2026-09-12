@@ -74,7 +74,10 @@ echo "$AFTER" | field "d['visiblePins'][0]['count']" | grep -qx 10 || fail "brow
 echo "$AFTER" | field "d['visiblePins'][1]['count']" | grep -qx 10 || fail "term group should have 10 windows"
 echo "$AFTER" | field "d['visiblePins'][2]['count']" | grep -qx 0 || fail "closed pin should have 0 windows"
 pass "G2 grouping: 10+10+0+1 windows map to four cells"
-(( AFTER_RUNNING == BASE_RUNNING + 9 )) || fail "expected $((BASE_RUNNING + 9)) unpinned groups, got $AFTER_RUNNING"
+# Count only the test's own apps: the desktop may open or close something
+# unrelated while the run is in progress.
+HB_RUNNING=$(echo "$AFTER" | field "len([g for g in d['running'] if g['key'].startswith('class:hb.')])")
+(( HB_RUNNING == 9 )) || fail "expected 9 unpinned test groups behind Running, got $HB_RUNNING"
 pass "G3 bounded complexity: 9 unpinned apps (20 windows) stayed behind the Running cell"
 
 # --- G5: mouse workflow over IPC --------------------------------------
@@ -142,7 +145,7 @@ sleep 3
 FINAL=$(state)
 [[ $(echo "$FINAL" | field "d['surfaceExtent']") == "$BASE_EXTENT" ]] || fail "surface changed after closing everything"
 [[ $(echo "$FINAL" | field "[g['key'] for g in d['visiblePins']]") == "$BASE_VISIBLE" ]] || fail "pins moved after churn"
-(( $(echo "$FINAL" | field "len(d['running'])") == BASE_RUNNING )) || fail "stale running groups remain"
+(( $(echo "$FINAL" | field "len([g for g in d['running'] if g['key'].startswith('class:hb.')])") == 0 )) || fail "stale test groups remain behind Running"
 pass "G12 churn: 41 windows closed, model back to baseline"
 
 if (( INCONCLUSIVE )); then echo "ALL PASS (focus checks inconclusive: desktop was in use — rerun idle for G5)"; else echo "ALL PASS"; fi
