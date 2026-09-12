@@ -58,7 +58,8 @@ Item {
         id: thumb
         anchors.centerIn: parent
         captureSource: root.showThumb ? root.toplevel.wayland : null
-        live: root.visible && root.showThumb
+        // One frame per row: the popover is a menu, not a monitor.
+        live: false
         paintCursor: false
         visible: hasContent && sourceSize.width > 0 && sourceSize.height > 0
         readonly property real fit: (sourceSize.width > 0 && sourceSize.height > 0)

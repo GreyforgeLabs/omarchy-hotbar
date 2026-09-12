@@ -31,7 +31,7 @@ PopupCard {
   contentWidth: shown > 0 ? Math.min(availableCardWidth, shown * thumbW + (shown - 1) * Style.space(8) + padding * 2 + Border.left(borderSpec) + Border.right(borderSpec)) : padding * 2
   contentHeight: cappedContentHeight(thumbH + Style.space(20) + (hidden > 0 ? Style.space(16) : 0) + padding * 2 + Border.top(borderSpec) + Border.bottom(borderSpec))
 
-  QtObject {
+  property QtObject proxy: QtObject {
     id: proxy
     readonly property string position: root.hotbar && root.hotbar.bar ? root.hotbar.bar.position : "top"
     property var activePopout: null

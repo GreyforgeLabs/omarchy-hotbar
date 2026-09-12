@@ -18,9 +18,22 @@ HotbarPopover {
 
   showEmpty: overflow.length === 0 && running.length === 0
 
-  rows: {
-    var out = []
+  readonly property string signature: {
     var rev = root.hotbar ? root.hotbar.revision : 0
+    if (!root.open) return ""
+    var over = root.overflow || []
+    var run = root.running || []
+    var parts = []
+    for (var i = 0; i < over.length; i++) parts.push(over[i].key + ":" + over[i].count + ":" + (over[i].focused ? 1 : 0))
+    parts.push("|")
+    for (var j = 0; j < run.length; j++) parts.push(run[j].key + ":" + run[j].count + ":" + (run[j].focused ? 1 : 0) + ":" + (run[j].count === 1 && run[j].windows.length && run[j].windows[0].toplevel ? String(run[j].windows[0].toplevel.title || "") : ""))
+    return parts.join(",")
+  }
+  onSignatureChanged: rows = buildRows()
+  onOpenChanged: if (open) rows = buildRows()
+
+  function buildRows() {
+    var out = []
     var over = root.overflow || []
     var run = root.running || []
     if (over.length) {

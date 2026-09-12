@@ -34,7 +34,7 @@ HotbarPopover {
     return {
       kind: "row",
       primary: place.name,
-      secondary: place.id === "home" || place.id === "filemanager" || place.id === "trash" ? "" : shortPath(place.path),
+      secondary: place.section === "places" || place.section === "system" ? "" : shortPath(place.path),
       glyph: place.glyph || "󰉋",
       place: place,
       onActivate: function(button) {

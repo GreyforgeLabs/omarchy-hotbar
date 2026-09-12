@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "HotbarModel.js" as Model
@@ -21,6 +22,51 @@ BarWidget {
   moduleName: "greyforge.hotbar"
 
   // ------------------------------------------------------------ settings
+
+  // The host injects `settings` from its in-memory layout entry, but after a
+  // plugin hot-reload that copy can predate the last inline settings write
+  // (pins persisted a moment ago would silently vanish). shell.json on disk
+  // is the durable truth, so it is watched and preferred; the injected
+  // object is the fallback when the user has no shell.json yet.
+  property var fileSettings: null
+  readonly property var effectiveSettings: fileSettings || settings || ({})
+
+  function setting(name, fallback) {
+    var source = effectiveSettings
+    var value = source ? source[name] : undefined
+    return value === undefined || value === null ? fallback : value
+  }
+
+  FileView {
+    id: shellConfigFile
+    path: root.home + "/.config/omarchy/shell.json"
+    watchChanges: true
+    onLoaded: root.fileSettings = root.readOwnEntry(text())
+    onLoadFailed: root.fileSettings = null
+    onFileChanged: reload()
+  }
+
+  function readOwnEntry(raw) {
+    var parsed
+    try { parsed = JSON.parse(String(raw || "")) } catch (e) { return null }
+    if (!parsed || typeof parsed !== "object") return null
+    var layout = parsed.bar && parsed.bar.layout ? parsed.bar.layout : null
+    var sections = ["left", "center", "right"]
+    if (layout) {
+      for (var s = 0; s < sections.length; s++) {
+        var list = Array.isArray(layout[sections[s]]) ? layout[sections[s]] : []
+        for (var i = 0; i < list.length; i++) {
+          var entry = list[i]
+          if (entry && typeof entry === "object" && String(entry.id || "") === moduleName) {
+            var copy = {}
+            for (var k in entry) if (k !== "id") copy[k] = entry[k]
+            return copy
+          }
+        }
+      }
+    }
+    return null
+  }
 
   readonly property var pins: Model.normalizePins(setting("pins", []))
   readonly property var overrideRules: Model.compileOverrides(setting("matches", []))
@@ -65,7 +111,7 @@ BarWidget {
 
   // Cells are approximately square against the bar thickness; the icon may
   // be smaller than the hit target but the target never shrinks.
-  readonly property real cellExtent: Math.max(Style.bar.iconSlot, iconSize + Style.space(9))
+  readonly property real cellExtent: Math.max(Style.bar.iconSlot, iconSize + 8)
   readonly property real separatorExtent: separators ? Style.space(9) : 0
 
   // ------------------------------------------------------- app identity
@@ -118,7 +164,27 @@ BarWidget {
   property var pinnedGroups: []
   property var runningGroups: []
   property int revision: 0
-  readonly property string activeAddress: Hyprland.activeToplevel ? String(Hyprland.activeToplevel.address || "") : ""
+  // Hyprland.activeToplevel is null until the first focus change after the
+  // shell starts, so the foreign-toplevel `activated` flag (correct from the
+  // first frame) and the compositor's focus history back it up.
+  readonly property string activeAddress: {
+    var tl = Hyprland.activeToplevel
+    if (tl && tl.address) return String(tl.address)
+    return fallbackActiveAddress
+  }
+  property string fallbackActiveAddress: ""
+
+  function detectActiveAddress(values) {
+    var best = "", bestRank = 1e9
+    for (var i = 0; i < values.length; i++) {
+      var tl = values[i]
+      if (!tl) continue
+      if (tl.wayland && tl.wayland.activated) return String(tl.address || "")
+      var ipc = tl.lastIpcObject || {}
+      if (typeof ipc.focusHistoryID === "number" && ipc.focusHistoryID < bestRank) { bestRank = ipc.focusHistoryID; best = String(tl.address || "") }
+    }
+    return best
+  }
 
   function snapshot(toplevel) {
     var ipc = toplevel.lastIpcObject || {}
@@ -135,6 +201,7 @@ BarWidget {
 
   function rebuild() {
     var values = Hyprland.toplevels.values || []
+    fallbackActiveAddress = detectActiveAddress(values)
     var windows = []
     var live = []
     for (var i = 0; i < values.length; i++) {
@@ -212,6 +279,7 @@ BarWidget {
         target: wl
         ignoreUnknownSignals: true
         function onAppIdChanged() { root.scheduleRebuild() }
+        function onActivatedChanged() { root.scheduleRebuild() }
       }
     }
   }
@@ -233,20 +301,27 @@ BarWidget {
 
   // ---------------------------------------------------------- actions
 
+  // Window addresses are hex from the compositor; anything else is refused
+  // before it can reach a dispatcher string.
+  function safeAddress(toplevel) {
+    var addr = String(toplevel && toplevel.address ? toplevel.address : "").replace(/^0x/, "")
+    return /^[0-9a-fA-F]{1,16}$/.test(addr) ? addr : ""
+  }
+
+  // Omarchy 4.x configures Hyprland in Lua, where dispatchers take the
+  // `hl.dsp.*` form (the same one the host's Workspaces widget sends). The
+  // request goes straight down the IPC socket — no process, no shell.
   function focusWindow(toplevel) {
-    if (!toplevel) return
-    try {
-      if (toplevel.wayland) toplevel.wayland.activate()
-      else Hyprland.dispatch("focuswindow address:0x" + String(toplevel.address))
-    } catch (e) {}
+    var addr = safeAddress(toplevel)
+    if (!addr) return
+    Hyprland.dispatch('hl.dsp.focus({ window = "address:0x' + addr + '" })')
     hidePreview()
   }
 
   function closeWindow(toplevel) {
-    if (!toplevel) return
-    try {
-      if (toplevel.wayland) toplevel.wayland.close()
-    } catch (e) {}
+    var addr = safeAddress(toplevel)
+    if (!addr) return
+    Hyprland.dispatch('hl.dsp.window.close({ window = "address:0x' + addr + '" })')
   }
 
   function canLaunch(group) {
@@ -281,11 +356,15 @@ BarWidget {
   }
 
   function cycleGroup(group, direction) {
-    if (!group) return
+    if (!group) return ""
     var live = groupByKey(group.key) || group
-    if (live.windows.length < 2) { if (live.windows.length === 1 && !live.focused) focusWindow(live.windows[0].toplevel); return }
+    if (live.windows.length < 2) {
+      if (live.windows.length === 1 && !live.focused) focusWindow(live.windows[0].toplevel)
+      return live.windows.length ? live.windows[0].address : ""
+    }
     var target = Model.clickTarget(live.windows, activeAddress, direction)
     if (target) focusWindow(target.toplevel)
+    return target ? target.address : ""
   }
 
   // Wheel over the Running cell: step through every window behind the
@@ -321,7 +400,7 @@ BarWidget {
       return false
     }
     var next = {}
-    var current = settings || {}
+    var current = effectiveSettings || {}
     for (var k in current) next[k] = current[k]
     for (var p in patch) next[p] = patch[p]
     return bar.shell.updateEntryInline(moduleName, next)
@@ -749,6 +828,7 @@ BarWidget {
     }
 
     Grid {
+      id: pinGrid
       columns: root.vertical ? 1 : 1000
       rows: root.vertical ? 1000 : 1
       flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
@@ -775,6 +855,146 @@ BarWidget {
       visible: active
       sourceComponent: RunningCell { hotbar: root }
     }
+  }
+
+  // ----------------------------------------------------------------- IPC
+
+  // `omarchy-shell hotbar <method> [arg]` — scripting surface used by the
+  // bin/hotbar CLI and the live test suite. Nothing here runs commands; the
+  // arguments are identity keys, popover names, or nothing.
+  Timer {
+    id: ipcRegisterTimer
+    interval: 400
+    running: true
+    onTriggered: ipc.enabled = true
+  }
+  IpcHandler {
+    id: ipc
+    target: "hotbar"
+    // On a plugin hot-reload the outgoing instance still holds the target
+    // while the new one is created; registering a beat later lets the new
+    // handler take over instead of silently failing.
+    enabled: false
+
+    function pin(key: string): string {
+      var k = root.resolveKey(key)
+      if (!k) return "error: empty key"
+      if (root.isPinned(k)) return "already pinned"
+      return root.persistSettings({ pins: Model.togglePin(root.pins, k) }) ? "ok" : "error: could not persist"
+    }
+
+    function unpin(key: string): string {
+      var k = root.resolveKey(key)
+      if (!k || !root.isPinned(k)) return "not pinned"
+      return root.persistSettings({ pins: Model.togglePin(root.pins, k) }) ? "ok" : "error: could not persist"
+    }
+
+    // Keys separated by "|" (qs ipc would read a JSON array as several
+    // arguments). An empty string clears every pin.
+    function setPins(keys: string): string {
+      var list = String(keys || "").split("|").map(function(k) { return k.trim() }).filter(function(k) { return k.length > 0 })
+      return root.persistSettings({ pins: Model.normalizePins(list) }) ? "ok" : "error: could not persist"
+    }
+
+    function pins(): string { return root.pins.join("|") }
+
+    function open(which: string): string {
+      var w = String(which || "")
+      if (w === "places") { root.openPlacesPopover(placesCellLoader.item || root); return "ok" }
+      if (w === "running") { root.openRunningPopover(runningCellLoader.item || root); return "ok" }
+      var g = root.groupByKey(w)
+      if (!g) return "unknown"
+      root.openAppPopover(g, root.cellFor(w) || root)
+      return "ok"
+    }
+
+    function close(): void { root.close() }
+
+    function activate(key: string): string {
+      var g = root.groupByKey(String(key || ""))
+      if (!g) return "unknown"
+      root.activateGroup(g)
+      return "ok"
+    }
+
+    function cycle(key: string): string {
+      var g = root.groupByKey(String(key || ""))
+      if (!g) return "unknown"
+      var order = g.windows.map(function(w) { return w.address }).join(",")
+      return "ok " + root.cycleGroup(g, 1) + " from " + root.activeAddress + " order " + order
+    }
+
+    function identify(): string {
+      // Every window with the identity Hotbar resolved for it — the tool for
+      // writing `matches` overrides.
+      var out = []
+      for (var key in root.groups) {
+        var g = root.groups[key]
+        for (var i = 0; i < g.windows.length; i++) {
+          var w = g.windows[i]
+          var tl = w.toplevel
+          var ipc = tl && tl.lastIpcObject ? tl.lastIpcObject : {}
+          out.push({ address: w.address, appId: tl && tl.wayland ? tl.wayland.appId : "", class: ipc["class"] || "", initialClass: ipc.initialClass || "", key: key, name: g.name, desktopId: g.desktopId, source: w.identity ? w.identity.source : "" })
+        }
+      }
+      return JSON.stringify(out)
+    }
+
+    function state(): string {
+      var w = root.QsWindow.window
+      return JSON.stringify({
+        region: root.region,
+        screen: w && w.screen ? w.screen.name : "",
+        surfaceExtent: root.surfaceExtent,
+        cellExtent: root.cellExtent,
+        availableExtent: root.availableExtent,
+        visiblePinCount: root.visiblePinCount,
+        pins: root.pins,
+        visiblePins: root.visiblePins.map(function(g) { return { key: g.key, name: g.name, count: g.count, focused: g.focused, urgent: g.urgent } }),
+        overflowPins: root.overflowPins.map(function(g) { return g.key }),
+        running: root.runningGroups.map(function(g) { return { key: g.key, name: g.name, count: g.count } }),
+        groups: Object.keys(root.groups).length,
+        windows: (Hyprland.toplevels.values || []).length,
+        openPopover: root.openPopover,
+        previewOpen: root.previewOpen,
+        activeAddress: root.activeAddress,
+        mru: root.mru.slice(0, 8),
+        placesSections: root.placesSections.map(function(s) { return { id: s.id, rows: s.rows.map(function(r) { return r.name + " -> " + r.path }) } })
+      })
+    }
+  }
+
+  // A key can be a desktop id, an identity key ("class:foo"), or the app
+  // id / class of something that is running now; the last form is resolved
+  // to whatever identity Hotbar gave that window.
+  function resolveKey(key) {
+    var k = Model.normalizePins([key])[0]
+    if (!k) return ""
+    if (root.groupByKey(k)) return k
+    var asClass = Model.CLASS_PREFIX + k.toLowerCase()
+    if (root.groupByKey(asClass)) return asClass
+    if (root.entryFor(k)) return k
+    var values = Hyprland.toplevels.values || []
+    for (var i = 0; i < values.length; i++) {
+      var tl = values[i]
+      var ipc = tl && tl.lastIpcObject ? tl.lastIpcObject : {}
+      var appId = tl && tl.wayland ? String(tl.wayland.appId || "") : ""
+      if (appId.toLowerCase() === k.toLowerCase() || String(ipc["class"] || "").toLowerCase() === k.toLowerCase()) {
+        return root.identityFor(tl).key
+      }
+    }
+    return k
+  }
+
+  function cellFor(key) {
+    // The AppCell currently showing this group, if it is on the surface.
+    var grid = pinGrid
+    if (!grid) return null
+    for (var i = 0; i < grid.children.length; i++) {
+      var c = grid.children[i]
+      if (c && c.group && c.group.key === key) return c
+    }
+    return null
   }
 
   // ------------------------------------------------------- popover items
