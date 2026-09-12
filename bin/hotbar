@@ -26,6 +26,8 @@ Windows
   open <app>             Open an app's menu.
   close                  Close any open Hotbar popover.
   activate <app>         Launch / focus / cycle like a left click.
+  activate <n>           Same for pinned slot n (1-based) — bind it to Super+n.
+  new <app>              Open a new window like a middle click.
   identify               Show how every window was identified (for `matches`).
 
 Setup
@@ -80,8 +82,12 @@ case "$cmd" in
     need_shell; ipc open "$1" ;;
   close) need_shell; ipc close ;;
   activate)
-    [[ -n "${1:-}" ]] || { echo "hotbar activate <app>" >&2; exit 1; }
-    need_shell; ipc activate "$1" ;;
+    [[ -n "${1:-}" ]] || { echo "hotbar activate <app|n>" >&2; exit 1; }
+    need_shell
+    if [[ "$1" =~ ^[0-9]+$ ]]; then ipc activateIndex "$1"; else ipc activate "$1"; fi ;;
+  new)
+    [[ -n "${1:-}" ]] || { echo "hotbar new <app>" >&2; exit 1; }
+    need_shell; ipc newWindow "$1" ;;
   identify)
     need_shell
     ipc identify | jq -r '.[] | [.appId, .class, "->", .key, "(" + .source + ")"] | @tsv' | column -t ;;

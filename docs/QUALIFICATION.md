@@ -15,7 +15,7 @@ IPC read that was checked by hand during the session.
 | G2 Application identity | PASS (matrix) | 32 node tests over the identity engine covering native, XWayland-style class, Electron (`StartupWMClass`), Chromium, Omarchy web apps by host, installed PWAs (`crx_`), custom terminal classes, class ≠ initialClass, Steam games, missing entries, raw commands, overrides, invalid overrides. Live: `hotbar identify` shows `foot`, `chromium`, `com.thisisgm.flea` resolving by desktop id; test app ids fall back to `class:` keys |
 | G3 Bounded complexity | PASS | `acceptance.sh`: 9 unpinned apps (20 windows) → Running only; 63 pins → 44 visible + 19 in the drawer with no growth beyond the budget |
 | G4 Places | PASS | live: Home + 5 XDG folders (Desktop omitted because it resolves to `$HOME/`), three drives (`/home/greyforge`, `/mnt/greyforge-data`, NTFS USB stick with its label), Trash via the files directory (no `trash:` handler on this machine), Open File Manager; `xdg-open ~/Downloads` opened Flea; favourites with unicode + quotes, `exec` fields rejected, missing paths dropped |
-| G5 Mouse UX | PASS / hover manual | IPC: launch-or-focus, MRU cycle, drawer cycle, popovers open/switch/close. Previews: logic exercised (timer → open) but the strip could only be observed while the pointer was in use by the owner; needs one idle-desktop hover check before tagging |
+| G5 Mouse UX | PASS | IPC: launch-or-focus, MRU cycle, drawer cycle, popovers open/switch/close. Hover: tooltip on the Places cell, hover fill, and the preview strip (two live thumbnails, active window outlined) observed with the pointer parked on the Foot cell for 1.4 s |
 | G6 Responsive layout | PASS | budget derived from the real neighbouring sections; with 63 pins Hotbar stopped ~80 px short of the right-hand widgets and pushed nothing |
 | G7 Orientation | PASS | screenshots for all four positions: indicators sit on the inner edge, popovers open inward, cells stack on vertical bars |
 | G8 Multi-monitor | by construction | popovers are `KeyboardPanel`s bound to the anchor's own bar window (`anchorWindow.screen`); the machine has one monitor, so not exercised |
@@ -28,8 +28,9 @@ IPC read that was checked by hand during the session.
 
 ## Known limitations
 
-- Hover previews were verified by logic and IPC state but not observed with a
-  human pointer during this session (the desktop was in use).
+- Hover previews were observed with a warped (not hand-moved) pointer; the
+  450 ms delay and the tooltip's popup mapping interact through a 260 ms
+  hover grace period — worth one hand check on a slow trackpad.
 - `omarchy bar set … --json` cannot carry arrays through the shell IPC; use
   `hotbar set` (hex-encoded JSON over Hotbar's own target).
 - After a plugin hot-reload (`omarchy plugin update`) the shell's IPC target

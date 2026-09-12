@@ -603,9 +603,11 @@ BarWidget {
   // The group the popover shows is looked up live so that a popover left
   // open while windows come and go always reflects the current state.
   readonly property var livePopoverGroup: popoverGroup ? (groupByKey(popoverGroup.key) || popoverGroup) : null
+  onLivePopoverGroupChanged: if (openPopover === "app" && !livePopoverGroup) close()
 
   // Hover previews: a passive strip, never coordinated with the bar.
   property bool previewOpen: false
+  property string previewDebug: ""
   property var previewGroup: null
   property Item previewAnchor: null
 
@@ -613,10 +615,11 @@ BarWidget {
     id: previewTimer
     interval: root.previewDelay
     onTriggered: {
-      if (!root.previewGroup || root.opened || (root.bar && root.bar.activePopout)) return
-      if (!root.previewAnchor || !root.previewAnchor.hovered) return
+      if (!root.previewGroup || root.opened) { root.previewDebug = "bail: no group/opened"; return }
+      if (!root.previewAnchor || !root.previewAnchor.hovered) { root.previewDebug = "bail: anchor not hovered"; return }
       var live = root.groupByKey(root.previewGroup.key)
-      if (!live || live.windows.length < 2) return
+      if (!live || live.windows.length < 2) { root.previewDebug = "bail: windows " + (live ? live.windows.length : -1); return }
+      root.previewDebug = "opened " + live.key
       root.previewOpen = true
     }
   }
@@ -997,6 +1000,22 @@ BarWidget {
       return "ok"
     }
 
+    // Pinned slot n (1-based) — for a Hyprland binding such as
+    // bind Super+1 → `omarchy-shell hotbar activateIndex 1`.
+    function activateIndex(index: string): string {
+      var n = Math.round(Number(index))
+      if (!(n >= 1) || n > root.pinnedGroups.length) return "no pin " + index
+      root.activateGroup(root.pinnedGroups[n - 1])
+      return "ok"
+    }
+
+    function newWindow(key: string): string {
+      var g = root.groupByKey(root.resolveKey(key))
+      if (!g) return "unknown"
+      root.newWindow(g)
+      return "ok"
+    }
+
     function cycle(key: string): string {
       var g = root.groupByKey(String(key || ""))
       if (!g) return "unknown"
@@ -1042,6 +1061,7 @@ BarWidget {
         barActivePopout: !!(root.bar && root.bar.activePopout),
         previewGroup: root.previewGroup ? root.previewGroup.key : "",
         previewTimerRunning: previewTimer.running,
+        previewDebug: root.previewDebug,
         placesSections: root.placesSections.map(function(s) { return { id: s.id, rows: s.rows.map(function(r) { return r.name + " -> " + r.path }) } })
       })
     }

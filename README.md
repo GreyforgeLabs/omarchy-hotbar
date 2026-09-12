@@ -111,6 +111,22 @@ Every window is mapped to one *application group*, in this order:
 `hotbar identify` prints the decision for every open window, which is what
 you need to write an override.
 
+## Keyboard shortcuts to slots
+
+Hotbar never edits your Hyprland config, but its slots are addressable, so
+you can bind them yourself in `~/.config/hypr/bindings.lua`:
+
+```lua
+for i = 1, 9 do
+  hl.bind({ mods = { "SUPER", "ALT" }, key = tostring(i),
+            dispatcher = "exec", arg = "omarchy-shell hotbar activateIndex " .. i,
+            description = "Hotbar slot " .. i })
+end
+```
+
+(Adapt to the binding helper your Omarchy version ships; the IPC call is
+the stable part.)
+
 ## CLI
 
 `bin/hotbar` — `pin`, `unpin`, `pins [set …|clear]`, `open`, `close`,
