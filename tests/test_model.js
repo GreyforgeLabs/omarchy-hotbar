@@ -263,6 +263,12 @@ test("launch argv has no shell", () => {
   assert.deepStrictEqual(M.launchArgv("foot.desktop"), ["uwsm-app", "--", "gtk-launch", "foot.desktop"])
   assert.deepStrictEqual(M.launchArgv("Disk Usage"), ["uwsm-app", "--", "gtk-launch", "Disk Usage.desktop"])
   assert.strictEqual(M.launchArgv(""), null)
+  // Only real desktop ids reach gtk-launch: no paths, options, or control bytes.
+  assert.strictEqual(M.launchArgv("../../tmp/evil"), null)
+  assert.strictEqual(M.launchArgv("/usr/share/applications/foot"), null)
+  assert.strictEqual(M.launchArgv("--help"), null)
+  assert.strictEqual(M.launchArgv("foot\nbar"), null)
+  assert.strictEqual(M.isDesktopId("org.gnome.Nautilus"), true)
   assert.deepStrictEqual(M.actionArgv(["/usr/bin/chromium", "--new-window", "$(rm -rf /)"]), ["uwsm-app", "--", "/usr/bin/chromium", "--new-window", "$(rm -rf /)"])
   assert.strictEqual(M.actionArgv([]), null)
 })

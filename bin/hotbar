@@ -67,6 +67,7 @@ case "$cmd" in
     case "${1:-}" in
       set)
         shift
+        (( $# )) || { echo "hotbar pins set <app>...   (use 'hotbar pins clear' to remove every pin)" >&2; exit 1; }
         joined=""
         for a in "$@"; do
           [[ "$a" == *"|"* ]] && { echo "hotbar: '|' is not allowed in a key" >&2; exit 1; }

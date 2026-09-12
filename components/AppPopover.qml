@@ -33,8 +33,8 @@ HotbarPopover {
     var total = root.hotbar ? root.hotbar.pins.length : 0
     return g.key + "|" + addrs + "|" + pinned + "|" + idx + "/" + total + "|" + (root.hotbar ? root.hotbar.previewsEnabled : false)
   }
-  onSignatureChanged: rows = buildRows()
-  onOpenChanged: if (open) rows = buildRows()
+  // An empty signature means closed: drop the rows (and their thumbnails).
+  onSignatureChanged: rows = signature ? buildRows() : []
 
   function buildRows() {
     var out = []

@@ -14,7 +14,25 @@ PopupCard {
   required property var hotbar
   property var group: null
   readonly property int maxPreviews: 6
-  readonly property var windows: group && hotbar ? (hotbar.groupByKey(group.key) || group).windows : []
+  readonly property var liveWindows: group && hotbar ? (hotbar.groupByKey(group.key) || group).windows : []
+  // Thumbnails keep the order they had when the strip opened. The model is
+  // MRU-sorted, and clicking a thumbnail changes MRU; re-sorting under the
+  // pointer would move the very thing the user is about to click.
+  property var frozenOrder: []
+  readonly property var windows: {
+    var rank = {}
+    for (var i = 0; i < frozenOrder.length; i++) rank[frozenOrder[i]] = i
+    var list = liveWindows.map(function(w, idx) { return { w: w, idx: idx } })
+    list.sort(function(a, b) {
+      var ra = rank[a.w.address] !== undefined ? rank[a.w.address] : 1e9 + a.idx
+      var rb = rank[b.w.address] !== undefined ? rank[b.w.address] : 1e9 + b.idx
+      return ra - rb
+    })
+    return list.map(function(x) { return x.w })
+  }
+  function freezeOrder() { frozenOrder = liveWindows.map(function(w) { return w.address }) }
+  onOpenChanged: if (open) freezeOrder()
+  onGroupChanged: if (open) freezeOrder()
   readonly property int shown: Math.min(maxPreviews, windows.length)
   readonly property int hidden: Math.max(0, windows.length - shown)
   readonly property real thumbW: Style.space(168)

@@ -29,8 +29,8 @@ HotbarPopover {
     for (var j = 0; j < run.length; j++) parts.push(run[j].key + ":" + run[j].count + ":" + (run[j].focused ? 1 : 0) + ":" + (run[j].count === 1 && run[j].windows.length && run[j].windows[0].toplevel ? String(run[j].windows[0].toplevel.title || "") : ""))
     return parts.join(",")
   }
-  onSignatureChanged: rows = buildRows()
-  onOpenChanged: if (open) rows = buildRows()
+  // An empty signature means closed: drop the rows (and their thumbnails).
+  onSignatureChanged: rows = signature ? buildRows() : []
 
   function buildRows() {
     var out = []

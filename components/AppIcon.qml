@@ -24,19 +24,22 @@ Item {
     asynchronous: true
     cache: true
     smooth: true
-    mipmap: true
+    // Decoded at the physical size it is drawn at, so no mipmaps are needed.
     sourceSize.width: Math.round(root.width * Math.max(1, root.dpr))
     sourceSize.height: Math.round(root.height * Math.max(1, root.dpr))
     visible: root.hasImage && !root.mono
   }
 
-  MultiEffect {
+  // The tint pass is a shader; only instantiate it when it is actually used.
+  Loader {
     anchors.fill: image
-    source: image
-    visible: root.hasImage && root.mono
-    colorization: 1.0
-    colorizationColor: root.tint
-    saturation: -1.0
+    active: root.mono && root.hasImage
+    sourceComponent: MultiEffect {
+      source: image
+      colorization: 1.0
+      colorizationColor: root.tint
+      saturation: -1.0
+    }
   }
 
   Text {

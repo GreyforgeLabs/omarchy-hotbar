@@ -513,10 +513,18 @@ function availableExtent(region, total, blockers, before, after, reserve) {
 
 // ------------------------------------------------------------- launching
 
+// A desktop id is a file name inside an applications/ directory: no path
+// separators, no leading dash (gtk-launch would read it as an option), no
+// control characters. Anything else is not an id and is refused.
+function isDesktopId(id) {
+  var value = str(id)
+  return value.length > 0 && value.length <= 255 && value.charAt(0) !== "-" && !/[\/\x00-\x1f\x7f]/.test(value)
+}
+
 // argv for launching a desktop entry the way the host shell does.
 function launchArgv(desktopId) {
   var id = stripDesktop(desktopId)
-  if (!id) return null
+  if (!isDesktopId(id)) return null
   return ["uwsm-app", "--", "gtk-launch", id + ".desktop"]
 }
 
@@ -623,6 +631,7 @@ if (typeof module !== "undefined") {
     movePin: movePin,
     visiblePinCount: visiblePinCount,
     availableExtent: availableExtent,
+    isDesktopId: isDesktopId,
     launchArgv: launchArgv,
     actionArgv: actionArgv,
     newWindowAction: newWindowAction,

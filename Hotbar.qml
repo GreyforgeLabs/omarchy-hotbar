@@ -82,7 +82,9 @@ BarWidget {
     atomicWrites: true
     printErrors: false
     onLoaded: {
-      try { root.backupSettings = JSON.parse(text()) } catch (e) { root.backupSettings = null }
+      var raw = text()
+      try { root.backupSettings = JSON.parse(raw) } catch (e) { root.backupSettings = null }
+      if (root.backupSettings) root.lastBackupText = raw
       root.maybeRestoreBackup()
     }
     onLoadFailed: root.backupSettings = null
@@ -103,11 +105,15 @@ BarWidget {
     }
   }
 
+  property string lastBackupText: ""
   function writeBackup(next) {
     var copy = {}
     var keys = ["pins", "favorites", "matches"]
     for (var i = 0; i < keys.length; i++) if (Array.isArray(next[keys[i]])) copy[keys[i]] = next[keys[i]]
-    try { backupFile.setText(JSON.stringify(copy, null, 2) + "\n") } catch (e) {}
+    var text = JSON.stringify(copy, null, 2) + "\n"
+    if (text === lastBackupText) return
+    lastBackupText = text
+    try { backupFile.setText(text) } catch (e) {}
   }
 
   readonly property var pins: Model.normalizePins(setting("pins", []))
@@ -171,6 +177,7 @@ BarWidget {
     }
     entryIndex = Model.buildEntryIndex(list)
     identityCache = ({})
+    iconCache = ({})
     scheduleRebuild()
   }
 
@@ -263,10 +270,13 @@ BarWidget {
     mru = Model.pruneMru(mru, live)
     var built = Model.buildGroups(windows, pins, mru, entryIndex, overrideRules)
     groups = built.groups
+    var pinCountChanged = built.pinned.length !== pinnedGroups.length
     pinnedGroups = built.pinned
     runningGroups = built.running
     revision++
-    scheduleLayout()
+    // The budget depends on how many pins exist and on the bar's geometry
+    // (watched separately) — not on which window has focus.
+    if (pinCountChanged) scheduleLayout()
   }
 
   Timer {
@@ -303,9 +313,7 @@ BarWidget {
       var name = String(event && event.name ? event.name : "")
       // Focus is tracked through activeToplevel; these are the remaining
       // events that change identity, location or attention state.
-      if (name === "urgent" || name === "movewindowv2" || name === "windowtitlev2" || name === "changefloatingmode" || name === "configreloaded") {
-        if (name !== "windowtitlev2") root.scheduleRebuild()
-      }
+      if (name === "urgent" || name === "movewindowv2" || name === "changefloatingmode" || name === "configreloaded") root.scheduleRebuild()
     }
   }
 
@@ -338,7 +346,9 @@ BarWidget {
   }
 
   onPinsChanged: scheduleRebuild()
-  onOverrideRulesChanged: { identityCache = ({}); scheduleRebuild() }
+  onOverrideRulesChanged: { identityCache = ({}); iconCache = ({}); scheduleRebuild() }
+  // A theme switch may bring a different icon theme; drop cached lookups.
+  onForegroundChanged: iconCache = ({})
 
   Component.onCompleted: {
     refreshEntryIndex()
@@ -376,8 +386,10 @@ BarWidget {
     return !!group && !!group.desktopId && !!entryFor(group.desktopId)
   }
 
+  // Only desktop entries the host can see are launchable: a pin whose entry
+  // was uninstalled, or a hand-written key, must never reach gtk-launch.
   function launch(group) {
-    if (!group || !group.desktopId) return
+    if (!canLaunch(group)) return
     var argv = Model.launchArgv(group.desktopId)
     if (argv) Quickshell.execDetached(argv)
   }
@@ -451,8 +463,16 @@ BarWidget {
     var current = effectiveSettings || {}
     for (var k in current) next[k] = current[k]
     for (var p in patch) next[p] = patch[p]
+    // The host reports "nothing changed" as a failure; it is not one.
+    if (JSON.stringify(next) === JSON.stringify(current)) return true
     var ok = bar.shell.updateEntryInline(moduleName, next)
-    if (ok) writeBackup(next)
+    if (ok) {
+      // shell.json is rewritten asynchronously; take the new values now so
+      // a second write arriving before the file watcher fires cannot start
+      // from the old ones and drop this change.
+      fileSettings = next
+      writeBackup(next)
+    }
     return ok
   }
 
@@ -466,11 +486,24 @@ BarWidget {
 
   // --------------------------------------------------------------- icons
 
+  // Icon theme lookups hit the filesystem; identities are stable, so each
+  // (key, icon, name) triple is resolved once per entry-index generation.
+  property var iconCache: ({})
+
   function iconSourceFor(group) {
     if (!group) return ""
     var icon = String(group.icon || "")
     if (icon.indexOf("/") === 0) return "file://" + icon
     if (icon.indexOf("file://") === 0 || icon.indexOf("image://") === 0) return icon
+    var cacheKey = String(group.key || "") + "\u0001" + icon + "\u0001" + String(group.desktopId || "") + "\u0001" + String(group.name || "")
+    var hit = iconCache[cacheKey]
+    if (hit !== undefined) return hit
+    var path = lookupIconPath(group, icon)
+    iconCache[cacheKey] = path
+    return path
+  }
+
+  function lookupIconPath(group, icon) {
     var path = icon ? Quickshell.iconPath(icon, true) : ""
     if (!path && group.desktopId) path = Quickshell.iconPath(String(group.desktopId), true)
     if (!path && String(group.key || "").indexOf(Model.CLASS_PREFIX) === 0) {
@@ -536,20 +569,30 @@ BarWidget {
     if (placesProcess.running) return
     placesProcess.command = [root.pluginDir + "/bin/hotbar-places"].concat(Places.candidatePaths(placesInput()))
     placesProcess.running = true
+    placesWatchdog.restart()
   }
 
   Process {
     id: placesProcess
     stdout: StdioCollector {
       onStreamFinished: {
+        placesWatchdog.stop()
         try {
           root.placesRaw = JSON.parse(text)
         } catch (e) {
-          root.placesRaw = null
+          // Killed by the watchdog, or garbage: keep the last good answer.
         }
         root.placesSections = Places.buildPlaces(root.placesInput())
       }
     }
+  }
+
+  // `test -d` on a dead network mount can block indefinitely. The helper is
+  // given a few seconds; after that the popover keeps what it already knows.
+  Timer {
+    id: placesWatchdog
+    interval: 3000
+    onTriggered: if (placesProcess.running) { console.warn("Hotbar: places helper timed out"); placesProcess.running = false }
   }
 
   function openPlace(path) {
@@ -602,7 +645,7 @@ BarWidget {
 
   // The group the popover shows is looked up live so that a popover left
   // open while windows come and go always reflects the current state.
-  readonly property var livePopoverGroup: popoverGroup ? (groupByKey(popoverGroup.key) || popoverGroup) : null
+  readonly property var livePopoverGroup: popoverGroup ? groupByKey(popoverGroup.key) : null
   onLivePopoverGroupChanged: if (openPopover === "app" && !livePopoverGroup) close()
 
   // Hover previews: a passive strip, never coordinated with the bar.
@@ -669,6 +712,17 @@ BarWidget {
 
   readonly property var visiblePins: pinnedGroups.slice(0, Math.max(0, Math.min(pinnedGroups.length, visiblePinCount)))
   readonly property var overflowPins: pinnedGroups.slice(Math.max(0, Math.min(pinnedGroups.length, visiblePinCount)))
+
+  // The surface Repeater is driven by identity keys, not group objects: a JS
+  // array model recreates every delegate whenever the array is reassigned,
+  // and groups are rebuilt on every focus change. Keys only change when a
+  // pin is added, removed, moved or overflowed, so the cells — with their
+  // hover state, tooltips, loaded icons and popover anchors — persist.
+  property var visiblePinKeys: []
+  onVisiblePinsChanged: {
+    var keys = visiblePins.map(function(g) { return g.key })
+    if (keys.join("\n") !== visiblePinKeys.join("\n")) visiblePinKeys = keys
+  }
 
   property int layoutScanAttempts: 0
   Timer {
@@ -766,9 +820,9 @@ BarWidget {
   // Everything the budget depends on, folded into one number so a single
   // change handler can debounce recomputation. None of it depends on this
   // widget's own width, so the layout cannot oscillate.
-  readonly property real budgetProbe: {
+  readonly property string budgetProbe: {
     var w = root.QsWindow.window
-    var acc = w ? (root.vertical ? w.height : w.width) : 0
+    var parts = [w ? (root.vertical ? w.height : w.width) : 0]
     var s = root.sectionItems
     var lists = ["left", "center", "right"]
     for (var r = 0; r < lists.length; r++) {
@@ -776,7 +830,9 @@ BarWidget {
       for (var i = 0; i < items.length; i++) {
         var it = items[i]
         if (!it) continue
-        acc += it.x + it.y + it.width + it.height + (it.visible ? 1 : 0)
+        // Each value on its own: a neighbour that shifts left while it grows
+        // must not cancel out.
+        parts.push(it.x, it.y, it.width, it.height, it.visible ? 1 : 0)
       }
     }
     var slot = ownSlot()
@@ -784,11 +840,11 @@ BarWidget {
     if (row && row.children) {
       for (var c = 0; c < row.children.length; c++) {
         var ch = row.children[c]
-        if (ch && ch !== slot) acc += (root.vertical ? ch.height : ch.width) + (ch.visible ? 1 : 0)
+        if (ch && ch !== slot) parts.push(root.vertical ? ch.height : ch.width, ch.visible ? 1 : 0)
       }
     }
-    acc += root.cellExtent + root.cellSpacing + root.separatorExtent + (root.showPlaces ? 1 : 0) + (root.showRunning ? 1 : 0)
-    return acc
+    parts.push(root.cellExtent, root.cellSpacing, root.separatorExtent, root.showPlaces ? 1 : 0, root.showRunning ? 1 : 0)
+    return parts.join(",")
   }
   onBudgetProbeChanged: scheduleLayout()
 
@@ -898,11 +954,11 @@ BarWidget {
       visible: root.visiblePins.length > 0
 
       Repeater {
-        model: root.visiblePins
+        model: root.visiblePinKeys
         delegate: AppCell {
           required property var modelData
           hotbar: root
-          group: modelData
+          pinKey: modelData
         }
       }
     }
@@ -1095,7 +1151,7 @@ BarWidget {
     if (!grid) return null
     for (var i = 0; i < grid.children.length; i++) {
       var c = grid.children[i]
-      if (c && c.group && c.group.key === key) return c
+      if (c && c.pinKey === key) return c
     }
     return null
   }

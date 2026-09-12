@@ -141,7 +141,8 @@ talks to the widget's `hotbar` IPC target (`omarchy-shell hotbar …`).
 - Popovers open inward on the monitor whose bar you clicked; top, bottom,
   left and right bars all work.
 - Idle cost is zero: no polling, no daemon, no filesystem crawling. Places
-  runs one short helper (`findmnt` + `test -d`) when it opens.
+  runs one short helper (`findmnt` + `test -d` + one `jq`, ~15 ms) when it
+  opens; a focus change costs the shell under a millisecond.
 - Security: no `sudo`, no network, no telemetry, no shell interpolation —
   every launch is an argv array, every window action is a Hyprland
   dispatcher with a sanitised hex address.

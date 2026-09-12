@@ -8,14 +8,19 @@
 #     "trashHandler": true|false }
 #
 # Paths arrive as discrete argv entries and are only ever used with `test -d`;
-# nothing here is eval'd or interpolated into another command line.
+# nothing here is eval'd or interpolated into another command line. Exactly
+# one jq process is spawned regardless of how many paths there are.
 set -u
 
-exists_json="{}"
+# One JSON boolean per argument, in argument order. Only the literals
+# true/false are ever appended, so the array is safe to hand to --argjson.
+flags="["
+sep=""
 for p in "$@"; do
-  if [[ -d "$p" ]]; then v=true; else v=false; fi
-  exists_json=$(jq -c --arg k "$p" --argjson v "$v" '. + {($k): $v}' <<<"$exists_json") || exists_json="{}"
+  if [[ -d "$p" ]]; then flags+="${sep}true"; else flags+="${sep}false"; fi
+  sep=","
 done
+flags+="]"
 
 mounts_json="null"
 if command -v findmnt >/dev/null 2>&1; then
@@ -23,11 +28,20 @@ if command -v findmnt >/dev/null 2>&1; then
   [[ -n "$mounts_json" ]] || mounts_json="null"
 fi
 
+# Is there a trash: scheme handler? `xdg-mime query` answers this by reading
+# the mimeapps lists and mimeinfo caches below — but through ~50 ms of shell
+# script. Reading the same files directly costs about a millisecond.
 trash=false
-if command -v xdg-mime >/dev/null 2>&1; then
-  handler=$(xdg-mime query default x-scheme-handler/trash 2>/dev/null || true)
-  [[ -n "$handler" ]] && trash=true
-fi
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+data_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+mime_files=("$config_home/mimeapps.list" "/etc/xdg/mimeapps.list" "$data_home/applications/mimeapps.list" "$data_home/applications/mimeinfo.cache")
+IFS=: read -ra dirs <<<"$data_dirs"
+for d in "${dirs[@]}"; do mime_files+=("$d/applications/mimeapps.list" "$d/applications/mimeinfo.cache"); done
+if grep -qsE '^x-scheme-handler/trash=.*[A-Za-z0-9]' "${mime_files[@]}" 2>/dev/null; then trash=true; fi
 
-jq -cn --argjson exists "$exists_json" --argjson mounts "$mounts_json" --argjson trash "$trash" \
-  '{ exists: $exists, mounts: $mounts, trashHandler: $trash }'
+jq -cn --argjson flags "$flags" --argjson mounts "$mounts_json" --argjson trash "$trash" '
+  { exists: ([$ARGS.positional, $flags] | transpose | map({ key: .[0], value: .[1] }) | from_entries),
+    mounts: $mounts,
+    trashHandler: $trash }' --args "$@" \
+  || printf '{"exists":{},"mounts":null,"trashHandler":false}\n'
