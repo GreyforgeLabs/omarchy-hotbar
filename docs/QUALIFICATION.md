@@ -1,4 +1,15 @@
-# Hotbar 0.2.1 — Qualification record
+# Hotbar 0.2.2 — Qualification record (addendum over 0.2.1)
+
+0.2.1 gates below remain valid: no QML/model changes in 0.2.2, only the
+`hotbar` CLI (`warp status|off|on`, `doctor` warp check), docs, and tests.
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Warp CLI | PASS | `tests/test_warp.sh` 11 tests (managed-block create/idempotent/replace, backup, status exit codes 0/1/2, hand-edit duplicate warning, doctor ok/warn/note) |
+| Regression | PASS | Full `tests/run.sh` green (model 42, places 9, registry 6, manifest 8, lifecycle 9, retry 3, warp 11) |
+| Live | PASS | `hotbar warp status` → `warps disabled` exit 0 on greyarch; `hotbar doctor` all-ok including `cursor warps disabled` line |
+
+## 0.2.1 record
 
 Machine: greyarch — Omarchy 4.0.3-1, Hyprland 0.56.2, Quickshell 0.3.1,
 two monitors (DP-2 2560×1440 @1.0, HD-1 1920×1080 @1.0). Date: 2026-09-12.

@@ -68,6 +68,22 @@ hotbar unpin chromium
 
 Pinned slots are addressable for key bindings — `omarchy-shell hotbar activateIndex 1` opens slot 1, so you can bind Super+1..9 in your Hyprland config.
 
+## Cursor warps (pointer jumps to center)
+
+Omarchy enables `cursor:warp_on_change_workspace` by default, and Hyprland
+warps to the window center on focus. Every Hotbar click focuses a window,
+so the pointer jumps. Hotbar does not change this on its own — opt in:
+
+```bash
+hotbar warp status   # disabled or enabled?
+hotbar warp off      # disable (managed block in ~/.config/hypr/looknfeel.lua)
+hotbar warp on       # restore Omarchy defaults
+hotbar doctor        # also reports the warp state with the fix hint
+```
+
+`warp off|on` writes one marked block, backs up the file first, and runs
+`hyprctl reload`. It never touches `/usr/share/omarchy/`.
+
 ## Compatibility and safety
 
 Needs Omarchy 4.x with Hyprland in Lua-config mode. HOTBAR has no daemon and does no background polling while idle; Places runs one short helper when it opens. A 41-window acceptance run against the live shell keeps the bar surface byte-identical before and after — see `docs/QUALIFICATION.md`.

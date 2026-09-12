@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.2 — 2026-09-12
+
+- Cursor warps: `hotbar warp status|off|on` plus a `hotbar doctor` warp
+  check. Omarchy enables `warp_on_change_workspace` by default and Hyprland
+  warps to window center on focus, so every Hotbar click yanked the
+  pointer. `warp off` writes one managed block in
+  `~/.config/hypr/looknfeel.lua` (backup first, `hyprctl reload`,
+  warns on hand-edit duplicates); `warp on` restores Omarchy defaults.
+  Covered by `tests/test_warp.sh` (11 tests).
+
 ## 0.2.1 — 2026-09-12
 
 - Safe installer: `hotbar install` never overwrites a file it does not own,

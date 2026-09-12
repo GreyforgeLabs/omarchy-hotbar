@@ -9,8 +9,10 @@ node tests/test_registry.js
 node tests/test_manifest.js
 bash tests/test_lifecycle.sh
 bash tests/test_retry.sh
+bash tests/test_warp.sh
 bash -n bin/hotbar
 bash -n bin/hotbar-places
+bash -n tests/test_warp.sh
 if command -v omarchy >/dev/null 2>&1; then
   omarchy plugin validate .
 fi

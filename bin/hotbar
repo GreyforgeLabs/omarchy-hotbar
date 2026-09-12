@@ -46,6 +46,15 @@ Setup
   get <key>              Print a setting as JSON.
   state                  Dump the live model as JSON.
   doctor                 Check the installation.
+
+Cursor warps (Hyprland yanks the pointer to window/workspace center
+on focus — annoying for a mouse-driven bar; Omarchy enables
+warp_on_change_workspace by default)
+  warp status            Show cursor:no_warps, warp_on_change_workspace,
+                         warp_on_toggle_special. Exit 0 disabled, 1 enabled.
+  warp off               Disable cursor warps (managed block in
+                         ~/.config/hypr/looknfeel.lua + hyprctl reload).
+  warp on                Restore Omarchy default warps (same mechanism).
 EOF
 }
 
@@ -169,6 +178,130 @@ cmd_uninstall() {
   return $rc
 }
 
+# Hyprland cursor warps live in the compositor, not in Hotbar. Hotbar only
+# reads them for `doctor`/`warp status` and manages one clearly-marked
+# override block in ~/.config/hypr/looknfeel.lua for `warp off|on`.
+# It never touches Omarchy defaults under /usr/share/omarchy/.
+hypr_looknfeel_file() { printf '%s' "$HOME/.config/hypr/looknfeel.lua"; }
+
+warp_block_begin() { printf '%s' "-- BEGIN greyforge.hotbar warp"; }
+warp_block_end() { printf '%s' "-- END greyforge.hotbar warp"; }
+
+warp_block_body() {
+  # warp_block_body <off|on> — print the managed hl.config block.
+  if [[ "${1:-off}" == "on" ]]; then
+    cat <<'EOF'
+-- Managed by `hotbar warp on`. Restores Omarchy default cursor warping.
+-- Edit via `hotbar warp on|off|status`. Do not hand-edit between markers.
+hl.config({
+  cursor = {
+    no_warps = false,
+    warp_on_change_workspace = 1,
+    warp_on_toggle_special = 0,
+  },
+})
+EOF
+  else
+    cat <<'EOF'
+-- Managed by `hotbar warp off`. Disables Hyprland cursor warping that yanks
+-- the pointer to window/workspace center on Hotbar focus.
+-- Edit via `hotbar warp on|off|status`. Do not hand-edit between markers.
+hl.config({
+  cursor = {
+    no_warps = true,
+    warp_on_change_workspace = 0,
+    warp_on_toggle_special = 0,
+  },
+})
+EOF
+  fi
+}
+
+# Parse `hyprctl getoption <key>` output. Prints the value or "".
+hypr_option_value() {
+  local key="$1" out="" line=""
+  out="$(hyprctl getoption "$key" 2>/dev/null || true)"
+  while IFS= read -r line; do
+    case "$line" in
+      "int: "*|"bool: "*|"str: "*|"float: "*)
+        printf '%s' "${line#*: }"
+        return 0
+        ;;
+    esac
+  done <<<"$out"
+  printf ''
+}
+
+# warp_read_state — prints `no_warps=<v> warp_workspace=<v> warp_special=<v>`
+# and returns 0 disabled, 1 enabled, 2 unknown (hyprctl missing/parse fail).
+warp_read_state() {
+  command -v hyprctl >/dev/null 2>&1 || return 2
+  local no_warps="" ws="" special=""
+  no_warps="$(hypr_option_value "cursor:no_warps")"
+  ws="$(hypr_option_value "cursor:warp_on_change_workspace")"
+  special="$(hypr_option_value "cursor:warp_on_toggle_special")"
+  [[ -n "$no_warps" && -n "$ws" ]] || return 2
+  printf 'no_warps=%s warp_workspace=%s warp_special=%s\n' "$no_warps" "$ws" "${special:-?}"
+  if [[ "$no_warps" == "true" && "$ws" == "0" ]]; then return 0; fi
+  return 1
+}
+
+cmd_warp_status() {
+  local state="" rc=0
+  state="$(warp_read_state)" || rc=$?
+  if (( rc == 2 )); then
+    echo "unknown: hyprctl not found or cursor options unreadable"
+    return 2
+  fi
+  echo "$state"
+  if (( rc == 0 )); then
+    echo "warps disabled"
+  else
+    echo "warps enabled (pointer jumps to center on Hotbar focus; run: hotbar warp off)"
+  fi
+  return $rc
+}
+
+cmd_warp_apply() {
+  # cmd_warp_apply <off|on>
+  local mode="${1:-off}" file="" tmp="" backup=""
+  [[ "$mode" == "on" || "$mode" == "off" ]] || { echo "hotbar: warp expects off|on|status" >&2; return 1; }
+  file="$(hypr_looknfeel_file)"
+  mkdir -p "$(dirname "$file")"
+  [[ -f "$file" ]] || printf '%s\n' "-- Change the default Omarchy look'n'feel." "" >"$file"
+  backup="${file}.bak.$(date +%s)"
+  cp -- "$file" "$backup" && echo "Backed up $file to $backup"
+  tmp="$(mktemp)"
+  awk -v begin="$(warp_block_begin)" -v end="$(warp_block_end)" '
+    $0 == begin { inblock = 1; next }
+    $0 == end { inblock = 0; next }
+    !inblock { print }
+  ' "$file" >"$tmp"
+  {
+    printf '%s\n' "$(warp_block_begin)"
+    warp_block_body "$mode"
+    printf '%s\n' "$(warp_block_end)"
+  } >>"$tmp"
+  cat -- "$tmp" >"$file"
+  rm -f -- "$tmp"
+  if (( $(grep -c "no_warps" "$file" 2>/dev/null || true) > 1 )); then
+    echo "warn: $file sets no_warps more than once (a hand-edit outside the managed block?); the last block wins — remove the hand-edit and keep the managed one" >&2
+  fi
+  if command -v hyprctl >/dev/null 2>&1; then
+    hyprctl reload >/dev/null 2>&1 || echo "warn: hyprctl reload failed" >&2
+    local errors=""
+    errors="$(hyprctl configerrors 2>&1 || true)"
+    if [[ -n "$errors" ]]; then
+      echo "warn: hyprctl configerrors:" >&2
+      printf '%s\n' "$errors" >&2
+      return 1
+    fi
+    echo "Applied cursor warps=$mode and reloaded Hyprland config."
+  else
+    echo "Applied cursor warps=$mode to $file (hyprctl not found; reload on next login)."
+  fi
+}
+
 cmd_doctor() {
   local ok=0 target src resolved state_file
   target="$(hotbar_cli_link)"
@@ -217,6 +350,16 @@ cmd_doctor() {
     fi
   else
     echo "MISSING omarchy-shell not running"; ok=1
+  fi
+  if warp_state="$(warp_read_state 2>/dev/null)"; then
+    echo "ok   cursor warps disabled ($warp_state)"
+  else
+    rc=$?
+    if (( rc == 2 )); then
+      echo "note  cannot read Hyprland cursor options (hyprctl unavailable)"
+    else
+      echo "warn  cursor warps enabled ($warp_state; pointer jumps to center on Hotbar focus; run: hotbar warp off)"
+    fi
   fi
   pgrep -f "hotbar-places" >/dev/null && echo "note  a hotbar-places helper is running (it should exit within a second)"
   return $ok
@@ -305,6 +448,12 @@ case "$cmd" in
       echo "Dry run. Re-run with --apply to write these pins."
     fi ;;
   doctor) cmd_doctor ;;
+  warp)
+    case "${1:-status}" in
+      status) cmd_warp_status ;;
+      off|on) cmd_warp_apply "$1" ;;
+      *) echo "hotbar: warp expects off|on|status" >&2; exit 1 ;;
+    esac ;;
   -h|--help|help|"") usage ;;
   *) echo "hotbar: unknown command '$cmd'" >&2; usage >&2; exit 1 ;;
 esac
