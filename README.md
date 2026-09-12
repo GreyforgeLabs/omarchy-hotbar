@@ -27,9 +27,9 @@ The bar shows three things, always in the same order:
 
 ## Demo
 
-https://github.com/GreyforgeLabs/omarchy-hotbar/blob/master/demo/hotbar-demo.mp4
+https://github.com/user-attachments/assets/c448a696-b777-4d0d-8fa1-81cd8b216db3
 
-Local copy: `demo/hotbar-demo.mp4`.
+Repo copy: `demo/hotbar-demo.mp4` ([blob](https://github.com/GreyforgeLabs/omarchy-hotbar/blob/master/demo/hotbar-demo.mp4) · [raw](https://github.com/GreyforgeLabs/omarchy-hotbar/raw/refs/heads/master/demo/hotbar-demo.mp4)).
 
 ## Everyday controls
 
