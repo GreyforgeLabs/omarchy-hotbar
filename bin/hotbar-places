@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Hotbar Places helper. Runs only when the Places popover opens.
+#
+# Usage: hotbar-places [path ...]
+# Prints one JSON object:
+#   { "exists": { "<path>": true|false, ... },
+#     "mounts": <findmnt --json output or null>,
+#     "trashHandler": true|false }
+#
+# Paths arrive as discrete argv entries and are only ever used with `test -d`;
+# nothing here is eval'd or interpolated into another command line.
+set -u
+
+exists_json="{}"
+for p in "$@"; do
+  if [[ -d "$p" ]]; then v=true; else v=false; fi
+  exists_json=$(jq -c --arg k "$p" --argjson v "$v" '. + {($k): $v}' <<<"$exists_json") || exists_json="{}"
+done
+
+mounts_json="null"
+if command -v findmnt >/dev/null 2>&1; then
+  mounts_json=$(findmnt -J --real -o TARGET,SOURCE,FSTYPE,LABEL,PARTLABEL,OPTIONS,FSROOT 2>/dev/null) || mounts_json="null"
+  [[ -n "$mounts_json" ]] || mounts_json="null"
+fi
+
+trash=false
+if command -v xdg-mime >/dev/null 2>&1; then
+  handler=$(xdg-mime query default x-scheme-handler/trash 2>/dev/null || true)
+  [[ -n "$handler" ]] && trash=true
+fi
+
+jq -cn --argjson exists "$exists_json" --argjson mounts "$mounts_json" --argjson trash "$trash" \
+  '{ exists: $exists, mounts: $mounts, trashHandler: $trash }'
