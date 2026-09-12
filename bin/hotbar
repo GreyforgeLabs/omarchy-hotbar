@@ -29,7 +29,11 @@ Windows
   identify               Show how every window was identified (for `matches`).
 
 Setup
-  install                Enable the widget and place it after the Omarchy menu.
+  install                Enable the widget, place it after the Omarchy menu,
+                         and link this CLI into ~/.local/bin.
+  import omapanel [--apply]
+                         Read OmaPanel's pinned apps from shell.json and turn
+                         them into Hotbar pins. Prints the plan; --apply writes.
   set <key> <value>      Change a setting (JSON or plain string; see README).
   get <key>              Print a setting as JSON.
   state                  Dump the live model as JSON.
@@ -96,7 +100,31 @@ case "$cmd" in
     omarchy-shell shell setPluginEnabled "$PLUGIN_ID" true >/dev/null
     sleep 1
     omarchy bar move "$PLUGIN_ID" --section left --index 1
+    if [[ -d "$HOME/.local/bin" ]]; then
+      ln -sfn "$(realpath "${BASH_SOURCE[0]}")" "$HOME/.local/bin/hotbar" && echo "Linked ~/.local/bin/hotbar"
+    fi
     echo "Hotbar placed after the Omarchy menu. Pin apps from the Running drawer or with: hotbar pin <app>" ;;
+  import)
+    [[ "${1:-}" == "omapanel" ]] || { echo "hotbar import omapanel [--apply]" >&2; exit 1; }
+    cfg="$HOME/.config/omarchy/shell.json"
+    [[ -f "$cfg" ]] || { echo "hotbar: no $cfg" >&2; exit 1; }
+    # OmaPanel stores pins as a JSON string inside its layout entry:
+    # [{label, match, launch, icon, desktopId}] — only desktopId / match are
+    # carried over; launch commands are never imported.
+    raw=$(jq -r '[.bar.layout[]? // [] | .[] | select(.id == "atagulalan.omapanel") | .pinnedApps // empty][0] // empty' "$cfg")
+    [[ -n "$raw" ]] || { echo "hotbar: no OmaPanel entry with pinnedApps found in shell.json"; exit 0; }
+    mapfile -t keys < <(jq -r 'if type == "string" then fromjson else . end | .[] | if (.desktopId // "") != "" then (.desktopId | sub("\\.desktop$"; "")) elif (.match // "") != "" then "class:" + (.match | gsub("\\\\"; "") | gsub("[\\^$]"; "") | ascii_downcase) else empty end' <<<"$raw")
+    (( ${#keys[@]} )) || { echo "hotbar: OmaPanel entry has no importable pins"; exit 0; }
+    echo "OmaPanel pins → Hotbar pins:"
+    printf '  %s\n' "${keys[@]}"
+    if [[ "${2:-}" == "--apply" ]]; then
+      need_shell
+      joined=""; for k in "${keys[@]}"; do joined+="${joined:+|}$k"; done
+      ipc setPins "$joined"
+      echo "Applied. OmaPanel itself was not touched; remove it with: omarchy plugin remove atagulalan.omapanel"
+    else
+      echo "Dry run. Re-run with --apply to write these pins."
+    fi ;;
   doctor)
     ok=0
     check() { if "$@" >/dev/null 2>&1; then echo "ok   $*"; else echo "MISSING $*"; ok=1; fi; }

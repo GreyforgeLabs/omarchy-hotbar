@@ -191,7 +191,7 @@ BarWidget {
     var appId = wl ? String(wl.appId || "") : ""
     var cls = String(ipc["class"] || "")
     var initialClass = String(ipc.initialClass || "")
-    var cacheKey = appId + "" + cls + "" + initialClass
+    var cacheKey = appId + "\u0001" + cls + "\u0001" + initialClass
     var cached = identityCache[cacheKey]
     if (cached && !/^steam_app_/i.test(appId || cls)) return cached
     var ident = Model.resolveIdentity({ appId: appId, cls: cls, initialClass: initialClass, title: toplevel.title }, entryIndex, overrideRules, heuristic)
