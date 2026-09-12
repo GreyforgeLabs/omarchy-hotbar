@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# hotbar — command-line companion for the Hotbar Omarchy bar widget.
+#
+# Everything here is a thin wrapper over the widget's `hotbar` IPC target or
+# over `omarchy bar set`. No command is ever built from user input; arguments
+# are passed through as discrete argv entries.
+set -euo pipefail
+
+PLUGIN_ID="greyforge.hotbar"
+
+usage() {
+  cat <<'EOF'
+Usage: hotbar <command> [args]
+
+Pins
+  pin <app>              Pin an app. <app> is a desktop id (chromium), an
+                         identity key (class:tui.float), or the app id / class
+                         of something that is running right now.
+  unpin <app>            Remove a pin.
+  pins                   List pins in order, one per line.
+  pins set <app>...      Replace the pin list (order = argument order).
+  pins clear             Remove every pin.
+
+Windows
+  open places|running    Open a popover.
+  open <app>             Open an app's menu.
+  close                  Close any open Hotbar popover.
+  activate <app>         Launch / focus / cycle like a left click.
+  identify               Show how every window was identified (for `matches`).
+
+Setup
+  install                Enable the widget and place it after the Omarchy menu.
+  set <key> <value>      Change a setting (JSON or plain string; see README).
+  get <key>              Print a setting as JSON.
+  state                  Dump the live model as JSON.
+  doctor                 Check the installation.
+EOF
+}
+
+ipc() { omarchy-shell hotbar "$@"; }
+
+need_shell() {
+  if ! omarchy-shell shell ping >/dev/null 2>&1; then
+    echo "hotbar: omarchy-shell is not running" >&2
+    exit 1
+  fi
+}
+
+cmd="${1:-}"
+(( $# > 0 )) && shift || true
+
+case "$cmd" in
+  pin)
+    [[ -n "${1:-}" ]] || { echo "hotbar pin <app>" >&2; exit 1; }
+    need_shell; ipc pin "$1" ;;
+  unpin)
+    [[ -n "${1:-}" ]] || { echo "hotbar unpin <app>" >&2; exit 1; }
+    need_shell; ipc unpin "$1" ;;
+  pins)
+    need_shell
+    case "${1:-}" in
+      set)
+        shift
+        joined=""
+        for a in "$@"; do
+          [[ "$a" == *"|"* ]] && { echo "hotbar: '|' is not allowed in a key" >&2; exit 1; }
+          joined+="${joined:+|}$a"
+        done
+        ipc setPins "$joined" ;;
+      clear) ipc setPins "" ;;
+      "") ipc pins | tr '|' '\n' | sed '/^$/d' ;;
+      *) echo "hotbar pins [set <app>...|clear]" >&2; exit 1 ;;
+    esac ;;
+  open)
+    [[ -n "${1:-}" ]] || { echo "hotbar open places|running|<app>" >&2; exit 1; }
+    need_shell; ipc open "$1" ;;
+  close) need_shell; ipc close ;;
+  activate)
+    [[ -n "${1:-}" ]] || { echo "hotbar activate <app>" >&2; exit 1; }
+    need_shell; ipc activate "$1" ;;
+  identify)
+    need_shell
+    ipc identify | jq -r '.[] | [.appId, .class, "->", .key, "(" + .source + ")"] | @tsv' | column -t ;;
+  state) need_shell; ipc state | jq . ;;
+  set)
+    [[ -n "${1:-}" && $# -ge 2 ]] || { echo "hotbar set <key> <value>" >&2; exit 1; }
+    need_shell
+    key="$1"; value="$2"
+    # JSON when it parses as JSON, otherwise a plain string.
+    if json=$(jq -cn --argjson v "$value" '$v' 2>/dev/null); then :; else json=$(jq -cn --arg v "$value" '$v'); fi
+    ipc setSetting "$key" "$(printf '%s' "$json" | od -An -v -tx1 | tr -d ' \n')" ;;
+  get)
+    [[ -n "${1:-}" ]] || { echo "hotbar get <key>" >&2; exit 1; }
+    need_shell; ipc getSetting "$1" ;;
+  install)
+    omarchy-shell shell setPluginEnabled "$PLUGIN_ID" true >/dev/null
+    sleep 1
+    omarchy bar move "$PLUGIN_ID" --section left --index 1
+    echo "Hotbar placed after the Omarchy menu. Pin apps from the Running drawer or with: hotbar pin <app>" ;;
+  doctor)
+    ok=0
+    check() { if "$@" >/dev/null 2>&1; then echo "ok   $*"; else echo "MISSING $*"; ok=1; fi; }
+    dir="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
+    [[ -f "$dir/manifest.json" ]] && echo "ok   plugin files at $dir" || { echo "MISSING plugin dir $dir"; ok=1; }
+    check command -v jq
+    check command -v findmnt
+    check command -v xdg-open
+    check command -v uwsm-app
+    check command -v gtk-launch
+    if omarchy-shell shell ping >/dev/null 2>&1; then
+      echo "ok   omarchy-shell running"
+      if state=$(ipc state 2>/dev/null); then
+        echo "ok   widget live: region=$(jq -r .region <<<"$state") pins=$(jq -r '.pins|length' <<<"$state") windows=$(jq -r .windows <<<"$state")"
+      else
+        echo "MISSING widget not placed in the bar (run: hotbar install)"; ok=1
+      fi
+    else
+      echo "MISSING omarchy-shell not running"; ok=1
+    fi
+    pgrep -f "hotbar-places" >/dev/null && echo "note  a hotbar-places helper is running (it should exit within a second)"
+    exit $ok ;;
+  -h|--help|help|"") usage ;;
+  *) echo "hotbar: unknown command '$cmd'" >&2; usage >&2; exit 1 ;;
+esac

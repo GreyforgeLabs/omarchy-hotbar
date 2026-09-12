@@ -543,6 +543,48 @@ function newWindowAction(actions) {
   return byId || byName || null
 }
 
+// Hex <-> UTF-8 JSON. The shell's IPC layer parses "[...]" arguments as
+// lists, so structured settings travel as hex and are decoded here.
+function decodeHexUtf8(hex) {
+  var h = str(hex).trim()
+  if (!h || h.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(h)) return null
+  var bytes = []
+  for (var i = 0; i < h.length; i += 2) bytes.push(parseInt(h.substr(i, 2), 16))
+  try {
+    if (typeof TextDecoder !== "undefined") return new TextDecoder("utf-8").decode(new Uint8Array(bytes))
+  } catch (e) {}
+  // Manual UTF-8 decode for engines without TextDecoder.
+  var out = ""
+  for (var j = 0; j < bytes.length; j++) {
+    var b = bytes[j]
+    if (b < 0x80) out += String.fromCharCode(b)
+    else if (b >= 0xc0 && b < 0xe0) { out += String.fromCharCode(((b & 0x1f) << 6) | (bytes[++j] & 0x3f)) }
+    else if (b >= 0xe0 && b < 0xf0) { out += String.fromCharCode(((b & 0x0f) << 12) | ((bytes[++j] & 0x3f) << 6) | (bytes[++j] & 0x3f)) }
+    else { var cp = ((b & 0x07) << 18) | ((bytes[++j] & 0x3f) << 12) | ((bytes[++j] & 0x3f) << 6) | (bytes[++j] & 0x3f); cp -= 0x10000; out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff)) }
+  }
+  return out
+}
+
+var SETTING_KEYS = {
+  pins: "array", matches: "array", favorites: "array",
+  iconSize: "integer", spacing: "integer", iconStyle: "string", runningIndicator: "string",
+  separators: "boolean", previews: "boolean", previewDelay: "integer", animations: "boolean",
+  wheelCycle: "boolean", middleClick: "string", showPlaces: "boolean", showRunning: "boolean",
+  responsive: "boolean", showDesktop: "boolean", showDownloads: "boolean", showDocuments: "boolean",
+  showPictures: "boolean", showMusic: "boolean", showVideos: "boolean", showTrash: "boolean", showMounts: "boolean"
+}
+
+// Validate one setting value against its declared type. Returns
+// { ok, value } or { ok: false, error }.
+function validateSetting(key, value) {
+  var type = SETTING_KEYS[str(key)]
+  if (!type) return { ok: false, error: "unknown setting: " + str(key) }
+  if (type === "array") return Array.isArray(value) ? { ok: true, value: value } : { ok: false, error: key + " must be a JSON array" }
+  if (type === "boolean") return typeof value === "boolean" ? { ok: true, value: value } : { ok: false, error: key + " must be true or false" }
+  if (type === "integer") { var n = Number(value); return isFinite(n) ? { ok: true, value: Math.round(n) } : { ok: false, error: key + " must be a number" } }
+  return { ok: true, value: str(value) }
+}
+
 // Location label for a window row: "Workspace 3 · DP-2".
 function windowLocation(win) {
   var w = win || {}
@@ -585,6 +627,9 @@ if (typeof module !== "undefined") {
     actionArgv: actionArgv,
     newWindowAction: newWindowAction,
     heuristicPlausible: heuristicPlausible,
-    windowLocation: windowLocation
+    windowLocation: windowLocation,
+    decodeHexUtf8: decodeHexUtf8,
+    validateSetting: validateSetting,
+    SETTING_KEYS: SETTING_KEYS
   }
 }

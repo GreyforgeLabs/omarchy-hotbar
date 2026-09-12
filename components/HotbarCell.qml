@@ -11,7 +11,11 @@ Item {
   required property var hotbar          // the Hotbar root (theme, geometry, actions)
   property string tooltipText: ""
   property string accessibleName: ""
-  property bool hovered: mouseArea.containsMouse
+  // Logical hover. Raw enter/exit flaps when a popup (tooltip, preview) maps
+  // under the bar — Qt delivers a leave and a fresh enter — so a short grace
+  // period absorbs that before the cell is considered left.
+  property bool hovered: false
+  readonly property bool tooltipHovered: visible && mouseArea.containsMouse
   property bool pressedState: mouseArea.pressed
   property bool showHoverFill: true
   // "none" | "running" | "focused"
@@ -146,6 +150,16 @@ Item {
     anchors.rightMargin: Style.space(3)
   }
 
+  Timer {
+    id: hoverGrace
+    interval: 260
+    onTriggered: {
+      if (mouseArea.containsMouse) return
+      root.hovered = false
+      root.hoverEnded()
+    }
+  }
+
   MouseArea {
     id: mouseArea
     anchors.fill: parent
@@ -153,12 +167,16 @@ Item {
     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
     cursorShape: Qt.PointingHandCursor
     onEntered: {
+      hoverGrace.stop()
       if (root.bar && root.tooltipText !== "") root.bar.showTooltip(root, root.tooltipText)
-      root.hoverStarted()
+      if (!root.hovered) {
+        root.hovered = true
+        root.hoverStarted()
+      }
     }
     onExited: {
       if (root.bar) root.bar.hideTooltip(root)
-      root.hoverEnded()
+      hoverGrace.restart()
     }
     onClicked: function(mouse) {
       if (root.bar) root.bar.hideTooltip(root)

@@ -68,6 +68,48 @@ BarWidget {
     return null
   }
 
+  // Disabling a bar widget removes its layout entry, and enabling it again
+  // creates a bare one — the host forgets pins, favourites and overrides.
+  // A small mirror under ~/.local/state brings them back when the entry has
+  // never held any (a deliberately emptied pin list is left alone).
+  readonly property string backupPath: Quickshell.env("XDG_STATE_HOME") ? Quickshell.env("XDG_STATE_HOME") + "/omarchy/hotbar-settings.json" : home + "/.local/state/omarchy/hotbar-settings.json"
+  property var backupSettings: null
+  property bool restoreAttempted: false
+
+  FileView {
+    id: backupFile
+    path: root.backupPath
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try { root.backupSettings = JSON.parse(text()) } catch (e) { root.backupSettings = null }
+      root.maybeRestoreBackup()
+    }
+    onLoadFailed: root.backupSettings = null
+  }
+
+  onFileSettingsChanged: maybeRestoreBackup()
+
+  function maybeRestoreBackup() {
+    if (restoreAttempted || !fileSettings || !backupSettings || typeof backupSettings !== "object") return
+    if ("pins" in fileSettings) return
+    var patch = {}
+    var keys = ["pins", "favorites", "matches"]
+    for (var i = 0; i < keys.length; i++) if (Array.isArray(backupSettings[keys[i]]) && backupSettings[keys[i]].length) patch[keys[i]] = backupSettings[keys[i]]
+    restoreAttempted = true
+    if (Object.keys(patch).length) {
+      console.log("Hotbar: restoring pins/favourites/overrides from " + backupPath)
+      persistSettings(patch)
+    }
+  }
+
+  function writeBackup(next) {
+    var copy = {}
+    var keys = ["pins", "favorites", "matches"]
+    for (var i = 0; i < keys.length; i++) if (Array.isArray(next[keys[i]])) copy[keys[i]] = next[keys[i]]
+    try { backupFile.setText(JSON.stringify(copy, null, 2) + "\n") } catch (e) {}
+  }
+
   readonly property var pins: Model.normalizePins(setting("pins", []))
   readonly property var overrideRules: Model.compileOverrides(setting("matches", []))
   readonly property int iconSize: clampInt(setting("iconSize", 18), 12, 24)
@@ -403,7 +445,9 @@ BarWidget {
     var current = effectiveSettings || {}
     for (var k in current) next[k] = current[k]
     for (var p in patch) next[p] = patch[p]
-    return bar.shell.updateEntryInline(moduleName, next)
+    var ok = bar.shell.updateEntryInline(moduleName, next)
+    if (ok) writeBackup(next)
+    return ok
   }
 
   function togglePin(key) {
@@ -564,6 +608,7 @@ BarWidget {
     interval: root.previewDelay
     onTriggered: {
       if (!root.previewGroup || root.opened || (root.bar && root.bar.activePopout)) return
+      if (!root.previewAnchor || !root.previewAnchor.hovered) return
       var live = root.groupByKey(root.previewGroup.key)
       if (!live || live.windows.length < 2) return
       root.previewOpen = true
@@ -625,8 +670,8 @@ BarWidget {
   Connections {
     target: root.bar
     ignoreUnknownSignals: true
-    function onLayoutConfigChanged() { layoutScanTimer.restart() }
-    function onPositionChanged() { layoutScanTimer.restart() }
+    function onLayoutConfigChanged() { if (layoutScanTimer) layoutScanTimer.restart() }
+    function onPositionChanged() { if (layoutScanTimer) layoutScanTimer.restart() }
   }
 
   // The ModuleSlot the bar wrapped us in: the nearest ancestor that carries
@@ -898,6 +943,27 @@ BarWidget {
 
     function pins(): string { return root.pins.join("|") }
 
+    // setSetting <key> <hex of JSON value>. Hex because the IPC layer would
+    // split a JSON array into separate arguments.
+    function setSetting(key: string, hexJson: string): string {
+      var raw = Model.decodeHexUtf8(hexJson)
+      if (raw === null) return "error: value must be hex-encoded JSON"
+      var value
+      try { value = JSON.parse(raw) } catch (e) { return "error: invalid JSON" }
+      var checked = Model.validateSetting(key, value)
+      if (!checked.ok) return "error: " + checked.error
+      var patch = {}
+      patch[String(key)] = checked.value
+      return root.persistSettings(patch) ? "ok" : "error: could not persist"
+    }
+
+    function getSetting(key: string): string {
+      var k = String(key || "")
+      if (!Model.SETTING_KEYS[k]) return "error: unknown setting: " + k
+      var v = root.effectiveSettings ? root.effectiveSettings[k] : undefined
+      return JSON.stringify(v === undefined ? null : v)
+    }
+
     function open(which: string): string {
       var w = String(which || "")
       if (w === "places") { root.openPlacesPopover(placesCellLoader.item || root); return "ok" }
@@ -959,6 +1025,9 @@ BarWidget {
         previewOpen: root.previewOpen,
         activeAddress: root.activeAddress,
         mru: root.mru.slice(0, 8),
+        barActivePopout: !!(root.bar && root.bar.activePopout),
+        previewGroup: root.previewGroup ? root.previewGroup.key : "",
+        previewTimerRunning: previewTimer.running,
         placesSections: root.placesSections.map(function(s) { return { id: s.id, rows: s.rows.map(function(r) { return r.name + " -> " + r.path }) } })
       })
     }
