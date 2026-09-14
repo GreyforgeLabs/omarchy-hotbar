@@ -164,4 +164,43 @@ out="$("$HOTBAR_BIN" doctor 2>&1)" || fail "doctor failed without hyprctl"
 pass "doctor notes unreadable options without hyprctl"
 teardown_home
 
+# 8. repeat warp off with no change is a true no-op: reports already,
+# writes no new backup, leaves the file alone, skips hyprctl reload
+setup_home
+export HYPRCTL_LOG="$HOME_TMP/hyprctl.log"
+cat >"$MOCKBIN/hyprctl" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "getoption" ]]; then
+  case "$2" in
+    cursor:no_warps) echo "bool: true"; echo "set: true"; exit 0 ;;
+    cursor:warp_on_change_workspace) echo "int: 0"; echo "set: true"; exit 0 ;;
+    cursor:warp_on_toggle_special) echo "int: 0"; echo "set: true"; exit 0 ;;
+  esac
+  exit 0
+fi
+if [[ "$1" == "reload" ]]; then echo reload >>"$HYPRCTL_LOG"; echo ok; exit 0; fi
+if [[ "$1" == "configerrors" ]]; then exit 0; fi
+exit 0
+EOF
+chmod +x "$MOCKBIN/hyprctl"
+printf '%s\n' "-- header" >"$HOME/.config/hypr/looknfeel.lua"
+"$HOTBAR_BIN" warp off >/dev/null || fail "warp off (setup) failed"
+sleep 1.1
+backups_before="$(ls "$HOME"/.config/hypr/looknfeel.lua.bak.* 2>/dev/null | wc -l)"
+sum_before="$(sha256sum "$HOME/.config/hypr/looknfeel.lua" | awk '{ print $1 }')"
+: >"$HYPRCTL_LOG"
+out="$("$HOTBAR_BIN" warp off)" || fail "repeat warp off failed"
+[[ "$out" == *"already off"* ]] || fail "repeat warp off did not report already-up-to-date: $out"
+if [[ "$(ls "$HOME"/.config/hypr/looknfeel.lua.bak.* 2>/dev/null | wc -l)" != "$backups_before" ]]; then
+  fail "repeat warp off wrote another backup"
+fi
+if [[ "$(sha256sum "$HOME/.config/hypr/looknfeel.lua" | awk '{ print $1 }')" != "$sum_before" ]]; then
+  fail "repeat warp off rewrote the file"
+fi
+if [[ -s "$HYPRCTL_LOG" ]]; then
+  fail "repeat warp off reloaded Hyprland for a no-op"
+fi
+pass "repeat warp off with no change is a true no-op"
+teardown_home
+
 echo "Warp: $PASS tests passed"

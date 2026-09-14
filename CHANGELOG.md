@@ -8,6 +8,12 @@
   uses the existing safe `hotbar warp off|on` backend, and confirms the
   resulting state after changes.
 - Clearly indicates that the setting applies system-wide to Hyprland.
+- `hotbar warp off|on` is now a true no-op when the managed block already
+  holds the requested mode: it reports `already off|on` and skips the
+  backup, the rewrite, and the `hyprctl reload` (repeat runs used to add
+  another timestamped backup and disturb the live session for zero
+  change). Covered by a new `tests/test_warp.sh` regression test
+  (12 tests).
 
 ## 0.2.2 — 2026-09-12
 

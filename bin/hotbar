@@ -269,6 +269,20 @@ cmd_warp_apply() {
   file="$(hypr_looknfeel_file)"
   mkdir -p "$(dirname "$file")"
   [[ -f "$file" ]] || printf '%s\n' "-- Change the default Omarchy look'n'feel." "" >"$file"
+  # Idempotent: when the managed block already holds the requested mode,
+  # there is nothing to do — skip the backup, the rewrite, and the
+  # compositor reload (a no-op reload still disturbs the live session and
+  # every repeat run used to litter another timestamped backup).
+  desired_block="$(printf '%s\n' "$(warp_block_begin)"; warp_block_body "$mode"; printf '%s\n' "$(warp_block_end)")"
+  current_block="$(awk -v begin="$(warp_block_begin)" -v end="$(warp_block_end)" '
+    $0 == begin { inblock = 1 }
+    inblock { print }
+    $0 == end { inblock = 0 }
+  ' "$file")"
+  if [[ "$current_block" == "$desired_block" ]]; then
+    echo "Cursor warps already $mode (managed block up to date; nothing changed)."
+    return 0
+  fi
   backup="${file}.bak.$(date +%s)"
   cp -- "$file" "$backup" && echo "Backed up $file to $backup"
   tmp="$(mktemp)"

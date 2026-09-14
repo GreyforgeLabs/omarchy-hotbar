@@ -1,14 +1,17 @@
 # Hotbar 0.2.3 — Qualification record (addendum over 0.2.2)
 
-0.2.2 gates below remain valid: the 0.2.2 CLI/backend is untouched in 0.2.3
-(`tests/test_warp.sh` still green). 0.2.3 adds only the Settings toggle
-(`WarpModel.js`, Hotbar.qml warp bridge, SettingsPopover row), its boundary
-tests, and docs.
+0.2.2 gates below remain valid: the 0.2.2 CLI/backend behaviour is
+unchanged in 0.2.3 except that `warp off|on` short-circuits when the
+managed block already holds the requested mode (no backup, no rewrite,
+no reload; `tests/test_warp.sh` now 12 tests, still green). 0.2.3 adds
+the Settings toggle (`WarpModel.js`, Hotbar.qml warp bridge,
+SettingsPopover row), its boundary tests, and docs.
 
 | Gate | Result | Evidence |
 |---|---|---|
 | UI boundary | PASS | `tests/test_warp_ui.js` 14 tests (disabled→ON, enabled→OFF, unknown indeterminate, toggle ON→`warp off`, toggle OFF→`warp on`, failure restores actual, re-read on open, no polling, existing rows intact, no QML config duplication, inline error, CLI surface unchanged) |
 | Regression | PASS | Full `tests/run.sh` green (model, places, registry, manifest, warp-ui, lifecycle, retry, warp) |
+| Warp no-op | PASS | Repeat `warp off` with no change reports `already off`, writes no new backup, leaves the file byte-identical, skips `hyprctl reload` (new test 8 in `tests/test_warp.sh`; verified to fail on the pre-fix backend with backup+reload output) |
 | Live | PASS | Both directions through the real backend the toggle invokes: `warp on` → `warps enabled` exit 1 (`hyprctl getoption` agrees: no_warps=false, workspace=1); `warp off` → `warps disabled` exit 0; `warp on` again → enabled; `warp off` again for the preferred local config (single managed block, `hotbar doctor` all-ok with `cursor warps disabled`, `hyprctl configerrors` empty). GUI mapping disabled→ON / enabled→OFF is pinned by `test_warp_ui.js`; the popover sends the same argv verified here |
 
 ## 0.2.2 record (addendum over 0.2.1)
