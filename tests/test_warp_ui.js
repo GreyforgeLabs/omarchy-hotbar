@@ -181,8 +181,14 @@ test("no duplicated warp implementation in QML", () => {
 test("failure surfaces inline without modal spam", () => {
   assert.ok(/warpError\s*=\s*Warp\.APPLY_ERROR/.test(hotbarQml), "apply failure must set the inline error")
   assert.ok(/danger:\s*true/.test(settingsQml), "error row must reuse the danger treatment")
-  assert.ok(/onErrorOccurred[\s\S]*?warpState\s*=\s*"unknown"/.test(hotbarQml),
-    "helper failure must fall back to indeterminate, never a guess")
+  // Quickshell.Io.Process exposes no `errorOccurred` signal: QProcess forwarding
+  // slots like onErrorOccurred are Methods in its metaobject, not Signals, so a
+  // QML `onErrorOccurred` handler assigns a non-existent property and the whole
+  // widget fails to load. Failure evidence must come from the exit path.
+  assert.ok(!/onErrorOccurred/.test(hotbarQml),
+    "no onErrorOccurred handler: Quickshell.Process has no such signal")
+  assert.ok(/onExited[\s\S]*?parseWarpStatus\(/.test(hotbarQml),
+    "helper failure must fall back to indeterminate via onExited, never a guess")
 })
 
 test("0.2.2 CLI surface unchanged", () => {

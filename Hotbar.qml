@@ -662,12 +662,6 @@ BarWidget {
       root.warpDetails = parsed.details
       root.warpBusy = false
     }
-    onErrorOccurred: function(error) {
-      console.warn("Hotbar: warp status helper failed (" + error + ")")
-      root.warpState = "unknown"
-      root.warpDetails = ""
-      root.warpBusy = false
-    }
   }
 
   Process {
@@ -681,11 +675,6 @@ BarWidget {
       }
       // Re-read the real state either way; the control follows what the
       // compositor confirms, never what was requested.
-      root.refreshWarpState()
-    }
-    onErrorOccurred: function(error) {
-      console.warn("Hotbar: warp apply helper failed (" + error + ")")
-      root.warpError = Warp.APPLY_ERROR
       root.refreshWarpState()
     }
   }
