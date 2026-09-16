@@ -10,6 +10,7 @@ HotbarPopover {
   kind: "running"
 
   title: "Running"
+  trailingTitle: (overflow.length + running.length) > 0 ? String(overflow.length + running.length) + " APPS" : ""
   emptyText: "Nothing else is running. Apps you open that are not pinned show up here."
   preferredWidth: Style.space(300)
 

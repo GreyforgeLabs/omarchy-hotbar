@@ -146,6 +146,17 @@ BarWidget {
   readonly property color popupForeground: Color.popups.text
   readonly property color accentColor: Color.accent
   readonly property color urgentColor: bar ? bar.urgent : Color.urgent
+  // Greyforge Labs brand colours (fixed, theme-independent): the cyan
+  // structural seam and the single amber core of the mark.
+  readonly property color brandCyan: "#38c8e8"
+  readonly property color brandAmber: "#fda52b"
+  // Version string from the plugin's own manifest, for the Settings eyebrow.
+  property string version: ""
+  FileView {
+    path: root.pluginDir + "/manifest.json"
+    printErrors: false
+    onLoaded: { try { root.version = "v" + String(JSON.parse(text()).version || "") } catch (e) { root.version = "" } }
+  }
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property real devicePixelRatio: {
     var w = root.QsWindow.window
@@ -636,6 +647,7 @@ BarWidget {
     warpBusy = true
     warpStatusProc.command = argv
     warpStatusProc.running = true
+    warpStatusWatchdog.restart()
   }
 
   // keepOn=true (Keep ON) => `warp off`; false => `warp on`. Never sets
@@ -651,19 +663,31 @@ BarWidget {
     warpBusy = true
     warpApplyProc.command = argv
     warpApplyProc.running = true
+    warpApplyWatchdog.restart()
   }
 
   Process {
     id: warpStatusProc
     stdout: StdioCollector { id: warpStatusOut }
     onExited: function(exitCode, exitStatus) {
+      warpStatusWatchdog.stop()
       var parsed = Warp.parseWarpStatus(warpStatusOut.text, exitCode)
       root.warpState = parsed.state
       root.warpDetails = parsed.details
       root.warpBusy = false
     }
-    onErrorOccurred: function(error) {
-      console.warn("Hotbar: warp status helper failed (" + error + ")")
+  }
+
+  // Quickshell 0.3 Process has no error signal: a helper that cannot start
+  // never exits. The watchdogs keep the Settings row from staying busy
+  // forever and report the indeterminate state honestly.
+  Timer {
+    id: warpStatusWatchdog
+    interval: 5000
+    onTriggered: {
+      if (!root.warpBusy) return
+      console.warn("Hotbar: warp status helper did not answer")
+      warpStatusProc.running = false
       root.warpState = "unknown"
       root.warpDetails = ""
       root.warpBusy = false
@@ -683,8 +707,15 @@ BarWidget {
       // compositor confirms, never what was requested.
       root.refreshWarpState()
     }
-    onErrorOccurred: function(error) {
-      console.warn("Hotbar: warp apply helper failed (" + error + ")")
+  }
+
+  Timer {
+    id: warpApplyWatchdog
+    interval: 15000
+    onTriggered: {
+      if (!root.warpBusy || warpStatusProc.running) return
+      console.warn("Hotbar: warp apply helper did not answer")
+      warpApplyProc.running = false
       root.warpError = Warp.APPLY_ERROR
       root.refreshWarpState()
     }

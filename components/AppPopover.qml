@@ -12,7 +12,8 @@ HotbarPopover {
   readonly property int maxThumbnails: 8
 
   title: group ? String(group.name || "") : ""
-  trailingTitle: group && group.count > 0 ? String(group.count) : ""
+  iconSource: group && hotbar ? hotbar.iconSourceFor(group) : ""
+  trailingTitle: group && group.count > 0 ? String(group.count) + (group.count === 1 ? " WINDOW" : " WINDOWS") : ""
   emptyText: "Not running."
   showEmpty: false
   preferredWidth: Style.space(340)

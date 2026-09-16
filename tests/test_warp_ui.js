@@ -143,6 +143,9 @@ test("7: reopening Settings re-reads real system state", () => {
 test("8: no background polling for warp state", () => {
   const timerBlocks = hotbarQml.match(/Timer\s*\{[\s\S]*?\n\s*\}/g) || []
   for (const block of timerBlocks) {
+    // One-shot watchdogs (repeat is never set) may reference warp; they
+    // only clear a stuck busy state after a helper failed to answer.
+    if (/Watchdog/.test(block)) { assert.ok(!/repeat:\s*true/.test(block), "watchdog must be one-shot"); continue }
     assert.ok(!/warp/i.test(block), "warp must not be driven by a Timer: " + block.slice(0, 120))
   }
   const settingsTimers = settingsQml.match(/Timer\s*\{[\s\S]*?\n\s*\}/g) || []
@@ -181,8 +184,12 @@ test("no duplicated warp implementation in QML", () => {
 test("failure surfaces inline without modal spam", () => {
   assert.ok(/warpError\s*=\s*Warp\.APPLY_ERROR/.test(hotbarQml), "apply failure must set the inline error")
   assert.ok(/danger:\s*true/.test(settingsQml), "error row must reuse the danger treatment")
-  assert.ok(/onErrorOccurred[\s\S]*?warpState\s*=\s*"unknown"/.test(hotbarQml),
+  assert.ok(/warpStatusWatchdog[\s\S]*?warpState\s*=\s*"unknown"/.test(hotbarQml),
     "helper failure must fall back to indeterminate, never a guess")
+  // Quickshell 0.3.1's Process has no errorOccurred signal; a handler for it
+  // makes the whole widget fail to load ("Cannot assign to non-existent
+  // property"). Failures are covered by watchdog timers instead.
+  assert.ok(!/onErrorOccurred/.test(hotbarQml), "Process.onErrorOccurred does not exist on Quickshell 0.3")
 })
 
 test("0.2.2 CLI surface unchanged", () => {

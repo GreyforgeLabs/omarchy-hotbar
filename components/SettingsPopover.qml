@@ -18,9 +18,11 @@ HotbarPopover {
   id: root
   kind: "settings"
 
-  title: "Hotbar Settings"
+  title: "Settings"
+  eyebrow: "HOTBAR " + (hotbar ? hotbar.version : "")
   emptyText: "No settings."
-  preferredWidth: Style.space(320)
+  footerText: "hotbar doctor"
+  preferredWidth: Style.space(340)
 
   rows: {
     // Dependencies: rebuild when the settings change or the popover opens.

@@ -19,6 +19,10 @@ That places Hotbar after the Omarchy menu and links the `hotbar` command into `~
 
 The bar shows three things, always in the same order:
 
+<p align="center">
+  <img src="docs/screenshots/bar.png" alt="Hotbar in the Omarchy bar: Places, pins, Running" width="840">
+</p>
+
 **Places** — Home, XDG folders, favourites, mounted drives, Trash. One click opens any of them.
 
 **Pinned apps** — the apps you chose, in the order you chose. One app gets one cell whether it has zero windows or twenty. Pins never reorder on their own.
@@ -31,6 +35,11 @@ https://github.com/user-attachments/assets/c448a696-b777-4d0d-8fa1-81cd8b216db3
 
 Repo copy: `demo/hotbar-demo.mp4` ([blob](https://github.com/GreyforgeLabs/omarchy-hotbar/blob/master/demo/hotbar-demo.mp4) · [raw](https://github.com/GreyforgeLabs/omarchy-hotbar/raw/refs/heads/master/demo/hotbar-demo.mp4)).
 
+<p align="center">
+  <img src="docs/screenshots/places.png" alt="Places popover" width="300">
+  <img src="docs/screenshots/app-menu.png" alt="App menu with window thumbnails" width="400">
+</p>
+
 ## Everyday controls
 
 | Target | Left click | Middle click | Right click | Wheel | Hover |
@@ -42,6 +51,10 @@ Repo copy: `demo/hotbar-demo.mp4` ([blob](https://github.com/GreyforgeLabs/omarc
 The app menu lists every window with its workspace and monitor, plus pin/unpin, move left/right, close current, and close all. Inside any popover: arrow keys or j/k to move, Enter to open, x to close the window under the cursor, Esc to dismiss.
 
 ## Settings
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" alt="Hotbar Settings popover" width="360">
+</p>
 
 Right-click Places and pick *Hotbar Settings* — appearance, behaviour, visible cells, and Places sections are all there. Changes apply immediately and are validated before they are written. Behaviour also holds **Keep pointer in place**, which stops Hyprland moving the pointer when Hotbar focuses a window (system-wide; same as `hotbar warp off`).
 

@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../brand"
 
 // Shared popover chrome for Places, App, Running and Settings: a KeyboardPanel (the
 // host's own click/keyboard panel surface) holding a title line and a flat
@@ -25,6 +26,13 @@ KeyboardPanel {
   required property string kind
   property string title: ""
   property string trailingTitle: ""
+  // Eyebrow above the title: the product line, in brand cyan. Popovers that
+  // stand for something else (an app menu) keep the eyebrow but change
+  // the label so the surface still reads as Hotbar's.
+  property string eyebrow: "HOTBAR"
+  property string iconSource: ""     // app icon shown in the header instead of the mark
+  property bool signature: true      // Greyforge Labs wordmark at the foot
+  property string footerText: ""     // right-aligned hint next to the wordmark
   property var rows: []
   property int cursor: -1
   property bool cursorActive: false
@@ -47,6 +55,9 @@ KeyboardPanel {
 
   readonly property color foreground: hotbar ? hotbar.popupForeground : Color.popups.text
   readonly property string fontFamily: hotbar ? hotbar.fontFamily : Style.font.family
+  readonly property color brandCyan: hotbar ? hotbar.brandCyan : "#38c8e8"
+  readonly property color brandAmber: hotbar ? hotbar.brandAmber : "#fda52b"
+  readonly property color hairline: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
 
   function isSelectable(index) {
     var r = rows[index]
@@ -133,49 +144,137 @@ KeyboardPanel {
       Item {
         id: header
         width: parent.width
-        height: root.title !== "" ? Style.space(22) : 0
+        height: root.title !== "" ? Math.max(headerMark.height, headerLabels.implicitHeight) + Style.space(8) : 0
         visible: root.title !== ""
 
-        Text {
+        GreyforgeMark {
+          id: headerMark
           anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          text: root.title
-          textFormat: Text.PlainText
-          elide: Text.ElideRight
-          width: parent.width - (trailingLabel.visible ? trailingLabel.width + Style.space(8) : 0)
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.subtitle
-          font.bold: true
-          renderType: Text.NativeRendering
+          anchors.top: parent.top
+          size: Style.space(30)
+          steel: root.foreground
+          plate: Color.popups.background
+          coreScale: 0.24
+          showCore: root.iconSource === ""
+          AppIcon {
+            visible: root.iconSource !== ""
+            anchors.centerIn: parent
+            width: headerMark.size * 0.5
+            height: width
+            source: root.iconSource
+            fallbackGlyph: "󰣆"
+            fontFamily: root.fontFamily
+            tint: root.foreground
+            mono: false
+            dpr: root.hotbar ? root.hotbar.devicePixelRatio : 1
+          }
         }
 
-        Text {
-          id: trailingLabel
-          visible: root.trailingTitle !== ""
+        Column {
+          id: headerLabels
+          anchors.left: headerMark.right
+          anchors.leftMargin: Style.space(10)
           anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          text: root.trailingTitle
-          textFormat: Text.PlainText
-          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.62)
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
-          renderType: Text.NativeRendering
+          anchors.verticalCenter: headerMark.verticalCenter
+          spacing: Style.space(1)
+
+          Text {
+            width: parent.width
+            text: root.eyebrow + "  ·  GREYFORGE LABS"
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            color: root.brandCyan
+            opacity: 0.9
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 1.4
+            renderType: Text.NativeRendering
+          }
+
+          Item {
+            width: parent.width
+            height: titleText.implicitHeight
+            Text {
+              id: titleText
+              anchors.left: parent.left
+              text: root.title
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              width: parent.width - (trailingLabel.visible ? trailingLabel.width + Style.space(8) : 0)
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+              renderType: Text.NativeRendering
+            }
+            Rectangle {
+              id: trailingLabel
+              visible: root.trailingTitle !== ""
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              width: trailingText.implicitWidth + Style.space(10)
+              height: trailingText.implicitHeight + Style.space(4)
+              radius: height / 2
+              color: Qt.rgba(root.brandAmber.r, root.brandAmber.g, root.brandAmber.b, 0.16)
+              border.width: 1
+              border.color: Qt.rgba(root.brandAmber.r, root.brandAmber.g, root.brandAmber.b, 0.5)
+              Text {
+                id: trailingText
+                anchors.centerIn: parent
+                text: root.trailingTitle
+                textFormat: Text.PlainText
+                color: root.brandAmber
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                renderType: Text.NativeRendering
+              }
+            }
+          }
+        }
+
+        // steel rule with the amber core under the header
+        Rectangle {
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+          height: 1
+          gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: root.brandAmber }
+            GradientStop { position: 0.18; color: root.brandCyan }
+            GradientStop { position: 0.7; color: root.hairline }
+            GradientStop { position: 1.0; color: "transparent" }
+          }
         }
       }
 
-      Text {
+      Column {
         visible: root.showEmpty
         width: parent.width
-        text: root.emptyText
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
-        color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.62)
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-        renderType: Text.NativeRendering
-        topPadding: Style.space(4)
-        bottomPadding: Style.space(4)
+        spacing: Style.space(6)
+        topPadding: Style.space(10)
+        bottomPadding: Style.space(6)
+        GreyforgeMark {
+          anchors.horizontalCenter: parent.horizontalCenter
+          size: Style.space(48)
+          steel: root.foreground
+          plate: Color.popups.background
+          coreScale: 0.18
+          opacity: 0.5
+        }
+        Text {
+          width: parent.width
+          text: root.emptyText
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          horizontalAlignment: Text.AlignHCenter
+          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.62)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          renderType: Text.NativeRendering
+        }
       }
 
       ListView {
@@ -263,6 +362,36 @@ KeyboardPanel {
               }
             }
           }
+        }
+      }
+
+      Item {
+        visible: root.signature
+        width: parent.width
+        height: visible ? footerMark.height + Style.space(6) : 0
+        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: root.hairline }
+        GreyforgeWordmark {
+          id: footerMark
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(2)
+          anchors.bottom: parent.bottom
+          foreground: root.foreground
+          plate: Color.popups.background
+          fontFamily: root.fontFamily
+          fontSize: Style.font.caption
+          labelOpacity: 0.6
+        }
+        Text {
+          visible: root.footerText !== ""
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(2)
+          anchors.verticalCenter: footerMark.verticalCenter
+          text: root.footerText
+          textFormat: Text.PlainText
+          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.5)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          renderType: Text.NativeRendering
         }
       }
     }

@@ -98,9 +98,16 @@ Item {
     width: root.hotbar ? root.hotbar.iconSize : 18
     height: width
     opacity: root.dimmed ? 0.6 : 1
+    // A short press-in so a click on the bar has a tactile answer even
+    // before the window gets focus.
+    scale: root.pressedState ? 0.86 : 1
     Behavior on opacity {
       enabled: root.animate
       NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+    }
+    Behavior on scale {
+      enabled: root.animate
+      NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
     }
   }
 

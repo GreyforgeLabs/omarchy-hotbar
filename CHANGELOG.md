@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.4 — 2026-09-16
+
+- **Fixed: 0.2.3 did not load.** Quickshell 0.3.1's `Process` has no
+  `errorOccurred` signal, so the two `onErrorOccurred` handlers added for
+  the warp helpers made the whole widget fail with "Cannot assign to
+  non-existent property" (the installed 0.2.2 kept working, which hid it).
+  Helper failures are now caught by one-shot watchdog timers that clear
+  the busy state and report `unknown` / the inline apply error;
+  `tests/test_warp_ui.js` rejects the handler from now on.
+- Greyforge Labs identity throughout: the Places cell is the steel hexagon
+  mark holding the three pin slots (amber core on the middle pin, cyan seams
+  on hover and while a popover is open); every popover opens with the mark,
+  a "HOTBAR · GREYFORGE LABS" eyebrow, the title, an amber count chip, and
+  a steel rule, and closes with the Greyforge Labs wordmark. The app menu
+  shows the app's own icon inside the mark. Settings shows the version in
+  its eyebrow and `hotbar doctor` in its footer. Empty drawers show the
+  mark instead of bare text. Brand components live in `brand/`.
+- Cells press in briefly on click.
+- Screenshots in `docs/screenshots/`.
+
 ## 0.2.3 — 2026-09-12
 
 - Expose the 0.2.2 cursor-warp control in Hotbar Settings as

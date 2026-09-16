@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../brand"
 
 // Places: a destination launcher. Left click opens the popover, middle
 // click goes straight to Home in the default file manager, right click
@@ -12,61 +13,38 @@ HotbarCell {
   active: hotbar && (hotbar.openPopover === "places" || hotbar.openPopover === "settings")
 
 
-  // Miniature hotbar: a horizontal (or vertical) bar with a red border
-  // holding three pin slots, so the cell reads as Hotbar itself rather
-  // than a generic folder.
-  Item {
+  // The Greyforge mark holding three pin slots: Hotbar's own cell is the
+  // brand plate, so the bar reads as a Greyforge Labs surface at a glance.
+  // The middle pin carries the amber core.
+  GreyforgeMark {
     id: iconRoot
     anchors.centerIn: parent
-    width: root.hotbar ? root.hotbar.iconSize : 18
-    height: width
+    readonly property int iconPx: root.hotbar ? root.hotbar.iconSize : 18
     readonly property bool isVertical: root.hotbar ? root.hotbar.vertical : false
-    readonly property color pinColor: root.foreground
-    readonly property color frameColor: root.hotbar ? root.hotbar.urgentColor : "#e5484d"
-    readonly property color accentPin: root.hotbar ? root.hotbar.accentColor : pinColor
-    readonly property int pinPx: Math.max(2, Math.round((root.hotbar ? root.hotbar.iconSize : 18) / 6))
-    readonly property int pinGap: Math.max(2, Math.round((root.hotbar ? root.hotbar.iconSize : 18) / 9))
+    readonly property int pinPx: Math.max(2, Math.round(iconPx / 6))
+    readonly property int pinGap: Math.max(1, Math.round(iconPx / 10))
+    size: iconPx + 4
+    steel: root.foreground
+    plate: root.hotbar && root.hotbar.bar ? root.hotbar.bar.background : Color.bar.background
+    seams: root.active || root.hovered
+    showCore: false
+    scale: root.pressedState ? 0.92 : 1
+    Behavior on scale { enabled: root.animate; NumberAnimation { duration: 90 } }
 
-    Rectangle {
+    Grid {
       anchors.centerIn: parent
-      width: iconRoot.isVertical ? Math.max(6, Math.round(iconRoot.width * 0.55)) : iconRoot.width
-      height: iconRoot.isVertical ? iconRoot.height : Math.max(6, Math.round(iconRoot.height * 0.6))
-      radius: 3
-      color: "transparent"
-      border.color: iconRoot.frameColor
-      border.width: Math.max(1, Math.round((root.hotbar ? root.hotbar.iconSize : 18) / 12))
-
-      Row {
-        visible: !iconRoot.isVertical
-        anchors.centerIn: parent
-        spacing: iconRoot.pinGap
-        Repeater {
-          model: 3
-          Rectangle {
-            required property int index
-            width: iconRoot.pinPx
-            height: width
-            radius: 1
-            color: index === 1 ? iconRoot.accentPin : iconRoot.pinColor
-            opacity: index === 1 ? 1 : 0.85
-          }
-        }
-      }
-
-      Column {
-        visible: iconRoot.isVertical
-        anchors.centerIn: parent
-        spacing: iconRoot.pinGap
-        Repeater {
-          model: 3
-          Rectangle {
-            required property int index
-            width: iconRoot.pinPx
-            height: width
-            radius: 1
-            color: index === 1 ? iconRoot.accentPin : iconRoot.pinColor
-            opacity: index === 1 ? 1 : 0.85
-          }
+      columns: iconRoot.isVertical ? 1 : 3
+      rows: iconRoot.isVertical ? 3 : 1
+      spacing: iconRoot.pinGap
+      Repeater {
+        model: 3
+        Rectangle {
+          required property int index
+          width: iconRoot.pinPx
+          height: width
+          radius: index === 1 ? width / 2 : 1
+          color: index === 1 ? (root.hotbar ? root.hotbar.brandAmber : "#fda52b") : root.foreground
+          opacity: index === 1 ? 1 : 0.85
         }
       }
     }
