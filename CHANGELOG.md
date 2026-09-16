@@ -18,6 +18,8 @@
   its eyebrow and `hotbar doctor` in its footer. Empty drawers show the
   mark instead of bare text. Brand components live in `brand/`.
 - Cells press in briefly on click.
+- CI: the doctor warp test no longer fails on hosts without uwsm-app /
+  gtk-launch / the plugin dir (it asserts the warp lines, not the exit code).
 - Screenshots in `docs/screenshots/`.
 
 ## 0.2.3 — 2026-09-12

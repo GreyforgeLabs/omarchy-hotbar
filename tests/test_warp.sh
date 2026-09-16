@@ -147,19 +147,22 @@ err="$("$HOTBAR_BIN" warp off 2>&1 >/dev/null)" || fail "warp off with hand-edit
 pass "unmanaged duplicate cursor settings warn"
 teardown_home
 
-# 7. doctor: ok when disabled, warn when enabled, note without hyprctl
+# 7. doctor: ok when disabled, warn when enabled, note without hyprctl.
+# doctor's exit status also covers host checks unrelated to warps (plugin
+# dir, CLI link, uwsm-app, gtk-launch, findmnt) that a bare CI runner lacks,
+# so these assertions read the warp lines and ignore the status.
 setup_home
 mock_shell_healthy
 mock_hyprctl true 0 0
-out="$("$HOTBAR_BIN" doctor 2>&1)" || fail "doctor failed when disabled"
+out="$("$HOTBAR_BIN" doctor 2>&1 || true)"
 [[ "$out" == *"cursor warps disabled"* ]] || fail "doctor did not report disabled warps: $out"
 pass "doctor reports ok when warps disabled"
 mock_hyprctl false 1 0
-out="$("$HOTBAR_BIN" doctor 2>&1)" || fail "doctor failed when enabled"
+out="$("$HOTBAR_BIN" doctor 2>&1 || true)"
 [[ "$out" == *"cursor warps enabled"* && "$out" == *"hotbar warp off"* ]] || fail "doctor did not warn with fix hint: $out"
 pass "doctor warns with fix hint when warps enabled"
 mock_hyprctl_broken
-out="$("$HOTBAR_BIN" doctor 2>&1)" || fail "doctor failed without hyprctl"
+out="$("$HOTBAR_BIN" doctor 2>&1 || true)"
 [[ "$out" == *"cannot read Hyprland cursor options"* ]] || fail "doctor did not note unreadable options: $out"
 pass "doctor notes unreadable options without hyprctl"
 teardown_home
