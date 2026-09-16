@@ -189,12 +189,13 @@ chmod +x "$MOCKBIN/hyprctl"
 printf '%s\n' "-- header" >"$HOME/.config/hypr/looknfeel.lua"
 "$HOTBAR_BIN" warp off >/dev/null || fail "warp off (setup) failed"
 sleep 1.1
-backups_before="$(ls "$HOME"/.config/hypr/looknfeel.lua.bak.* 2>/dev/null | wc -l)"
+count_backups() { find "$HOME/.config/hypr" -maxdepth 1 -name 'looknfeel.lua.bak.*' | wc -l; }
+backups_before="$(count_backups)"
 sum_before="$(sha256sum "$HOME/.config/hypr/looknfeel.lua" | awk '{ print $1 }')"
 : >"$HYPRCTL_LOG"
 out="$("$HOTBAR_BIN" warp off)" || fail "repeat warp off failed"
 [[ "$out" == *"already off"* ]] || fail "repeat warp off did not report already-up-to-date: $out"
-if [[ "$(ls "$HOME"/.config/hypr/looknfeel.lua.bak.* 2>/dev/null | wc -l)" != "$backups_before" ]]; then
+if [[ "$(count_backups)" != "$backups_before" ]]; then
   fail "repeat warp off wrote another backup"
 fi
 if [[ "$(sha256sum "$HOME/.config/hypr/looknfeel.lua" | awk '{ print $1 }')" != "$sum_before" ]]; then
