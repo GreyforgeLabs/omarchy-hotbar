@@ -279,7 +279,7 @@ function buildPlaces(input) {
 
   var xdg = xdgEntries(inp.userDirs || {}, home, exists, settings)
   for (var i = 0; i < xdg.length; i++) taken[xdg[i].path] = true
-  if (xdg.length) sections.push({ id: "places", title: "Places", rows: xdg })
+  if (xdg.length) sections.push({ id: "places", title: "Folders", rows: xdg })
 
   var favs = favoriteEntries(settings.favorites, home, exists, taken)
   for (var f = 0; f < favs.length; f++) taken[favs[f].path] = true

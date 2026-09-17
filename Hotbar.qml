@@ -128,6 +128,8 @@ BarWidget {
   readonly property bool previewsEnabled: setting("previews", true) !== false
   readonly property int previewDelay: clampInt(setting("previewDelay", 450), 100, 1500)
   readonly property bool animationsEnabled: setting("animations", true) !== false && (bar ? bar.foregroundAnimationEnabled !== false : true)
+  readonly property bool flameEnabled: setting("flame", true) !== false
+  readonly property string placesStyle: String(setting("placesStyle", "minimal"))
   readonly property bool wheelCycle: setting("wheelCycle", true) !== false
   readonly property string middleClick: String(setting("middleClick", "new-window"))
   readonly property bool showPlaces: setting("showPlaces", true) !== false
@@ -173,6 +175,9 @@ BarWidget {
   // Cells are approximately square against the bar thickness; the icon may
   // be smaller than the hit target but the target never shrinks.
   readonly property real cellExtent: Math.max(Style.bar.iconSlot, iconSize + 8)
+  // The Places cell is the HOTBAR badge, longer than a pin cell; it reports
+  // its own extent so the pin budget and the surface size stay honest.
+  readonly property real placesExtent: placesCellLoader.item ? (vertical ? placesCellLoader.item.implicitHeight : placesCellLoader.item.implicitWidth) : cellExtent
   readonly property real separatorExtent: separators ? Style.space(9) : 0
 
   // ------------------------------------------------------- app identity
@@ -1012,7 +1017,7 @@ BarWidget {
         if (ch && ch !== slot) parts.push(root.vertical ? ch.height : ch.width, ch.visible ? 1 : 0)
       }
     }
-    parts.push(root.cellExtent, root.cellSpacing, root.separatorExtent, root.showPlaces ? 1 : 0, root.showRunning ? 1 : 0)
+    parts.push(root.cellExtent, root.placesExtent, root.cellSpacing, root.separatorExtent, root.showPlaces ? 1 : 0, root.showRunning ? 1 : 0)
     return parts.join(",")
   }
   onBudgetProbeChanged: scheduleLayout()
@@ -1052,7 +1057,9 @@ BarWidget {
     var available = Model.availableExtent(region, total, blockers, own.before, own.after, reserve)
     availableExtent = available
     var fixed = (showPlaces ? 1 : 0) + (showRunning ? 1 : 0)
-    var seps = (showPlaces ? separatorExtent : 0) + (showRunning ? separatorExtent : 0)
+    // Fixed extent beyond the fixed cells themselves: the separators plus
+    // whatever the Places badge needs over a plain cell.
+    var seps = (showPlaces ? separatorExtent + Math.max(0, placesExtent - cellExtent) : 0) + (showRunning ? separatorExtent : 0)
     var count = Model.visiblePinCount(available, cellExtent, cellSpacing, pinnedGroups.length, fixed, seps)
     // Hysteresis: adding a pin back needs half a cell of slack beyond what
     // the count strictly requires, so a neighbour wobbling by a pixel cannot
@@ -1071,7 +1078,7 @@ BarWidget {
   readonly property real surfaceExtent: {
     var n = 0
     var extent = 0
-    if (showPlaces) { extent += cellExtent; n++ }
+    if (showPlaces) { extent += placesExtent; n++ }
     var pinsShown = visiblePins.length
     if (pinsShown > 0) {
       if (n > 0) extent += separatorExtent
@@ -1300,6 +1307,7 @@ BarWidget {
         screen: w && w.screen ? w.screen.name : "",
         surfaceExtent: root.surfaceExtent,
         cellExtent: root.cellExtent,
+        placesExtent: root.placesExtent,
         availableExtent: root.availableExtent,
         visiblePinCount: root.visiblePinCount,
         pins: root.pins,

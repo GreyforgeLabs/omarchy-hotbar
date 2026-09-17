@@ -20,10 +20,10 @@ That places Hotbar after the Omarchy menu and links the `hotbar` command into `~
 The bar shows three things, always in the same order:
 
 <p align="center">
-  <img src="docs/screenshots/bar.png" alt="Hotbar in the Omarchy bar: Places, pins, Running" width="840">
+  <img src="docs/screenshots/bar.png" alt="Hotbar in the Omarchy bar: Places, pins, Running" width="420">
 </p>
 
-**Places** — Home, XDG folders, favourites, mounted drives, Trash. One click opens any of them.
+**Places** — Home, XDG folders, favourites, mounted drives, Trash. One click opens any of them. Its cell is a small hot bar — a red pill with an amber bar and a flame shimmer; *Places cell → badge* in Settings spells out HOTBAR instead, and *Places flame* turns the shimmer off.
 
 **Pinned apps** — the apps you chose, in the order you chose. One app gets one cell whether it has zero windows or twenty. Pins never reorder on their own.
 

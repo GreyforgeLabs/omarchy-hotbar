@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.5 — 2026-09-17
+
+- The Places cell is a hot bar: a hollow pill with a red outline, with a
+  flame shimmer — a warm highlight sweeps along the outline and flickers,
+  brighter on hover and while a popover is open. Two styles via the new
+  **Places cell** setting (`placesStyle`): `minimal` (default) is cell-sized
+  with a short amber bar in the middle; `badge` is longer and spells HOTBAR
+  in amber, the sweep running through the letters (the bar budget accounts
+  for its width; `hotbar state` reports `placesExtent`). The shimmer is one
+  tiny Canvas repaint at 30 fps, runs only while the cell is visible, and
+  honours **Animations** plus a new **Places flame** toggle (`flame`,
+  default on). Both are in Settings, the manifest and the CLI
+  (`hotbar set placesStyle badge`, `hotbar set flame false`).
+- Popovers lose the hexagon mark: headers are eyebrow + title (app menus
+  keep the app's own icon), empty drawers are text only, and the foot is a
+  faint "greyforge labs" line instead of the wordmark.
+- The first Places section is titled "Folders" (it sat under a popover
+  already titled Places).
+- Screenshots refreshed.
+
 ## 0.2.4 — 2026-09-16
 
 - **Fixed: 0.2.3 did not load.** Quickshell 0.3.1's `Process` has no

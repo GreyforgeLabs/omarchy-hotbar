@@ -1,7 +1,6 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
-import "../brand"
 
 // Shared popover chrome for Places, App, Running and Settings: a KeyboardPanel (the
 // host's own click/keyboard panel surface) holding a title line and a flat
@@ -147,19 +146,18 @@ KeyboardPanel {
         height: root.title !== "" ? Math.max(headerMark.height, headerLabels.implicitHeight) + Style.space(8) : 0
         visible: root.title !== ""
 
-        GreyforgeMark {
+        // App menus lead with the app's own icon; the other popovers have
+        // no leading mark — the eyebrow already says whose surface it is.
+        Item {
           id: headerMark
           anchors.left: parent.left
           anchors.top: parent.top
-          size: Style.space(30)
-          steel: root.foreground
-          plate: Color.popups.background
-          coreScale: 0.24
-          showCore: root.iconSource === ""
+          width: root.iconSource !== "" ? Style.space(30) : 0
+          height: root.iconSource !== "" ? Style.space(30) : headerLabels.implicitHeight
           AppIcon {
             visible: root.iconSource !== ""
             anchors.centerIn: parent
-            width: headerMark.size * 0.5
+            width: Style.space(22)
             height: width
             source: root.iconSource
             fallbackGlyph: "󰣆"
@@ -173,7 +171,7 @@ KeyboardPanel {
         Column {
           id: headerLabels
           anchors.left: headerMark.right
-          anchors.leftMargin: Style.space(10)
+          anchors.leftMargin: root.iconSource !== "" ? Style.space(10) : Style.space(2)
           anchors.right: parent.right
           anchors.verticalCenter: headerMark.verticalCenter
           spacing: Style.space(1)
@@ -256,14 +254,6 @@ KeyboardPanel {
         spacing: Style.space(6)
         topPadding: Style.space(10)
         bottomPadding: Style.space(6)
-        GreyforgeMark {
-          anchors.horizontalCenter: parent.horizontalCenter
-          size: Style.space(48)
-          steel: root.foreground
-          plate: Color.popups.background
-          coreScale: 0.18
-          opacity: 0.5
-        }
         Text {
           width: parent.width
           text: root.emptyText
@@ -365,32 +355,37 @@ KeyboardPanel {
         }
       }
 
+      // Signature: a quiet one-liner. The header already carries the mark
+      // and the eyebrow, so the foot only whispers the studio name.
       Item {
         visible: root.signature
         width: parent.width
-        height: visible ? footerMark.height + Style.space(6) : 0
-        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: root.hairline }
-        GreyforgeWordmark {
+        height: visible ? footerMark.implicitHeight + Style.space(8) : 0
+        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.07) }
+        Text {
           id: footerMark
           anchors.left: parent.left
-          anchors.leftMargin: Style.space(2)
+          anchors.leftMargin: Style.space(4)
           anchors.bottom: parent.bottom
-          foreground: root.foreground
-          plate: Color.popups.background
-          fontFamily: root.fontFamily
-          fontSize: Style.font.caption
-          labelOpacity: 0.6
+          text: "greyforge labs"
+          textFormat: Text.PlainText
+          color: root.foreground
+          opacity: 0.3
+          font.family: root.fontFamily
+          font.pixelSize: Math.max(8, Style.font.caption - 1)
+          font.letterSpacing: 1.2
+          renderType: Text.NativeRendering
         }
         Text {
           visible: root.footerText !== ""
           anchors.right: parent.right
-          anchors.rightMargin: Style.space(2)
+          anchors.rightMargin: Style.space(4)
           anchors.verticalCenter: footerMark.verticalCenter
           text: root.footerText
           textFormat: Text.PlainText
-          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.5)
+          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.4)
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: Math.max(8, Style.font.caption - 1)
           renderType: Text.NativeRendering
         }
       }

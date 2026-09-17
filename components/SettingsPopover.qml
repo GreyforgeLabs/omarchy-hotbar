@@ -124,6 +124,8 @@ HotbarPopover {
     out.push(enumRow("Running indicator", "runningIndicator", ["underline", "dot", "none"], "underline"))
     out.push(boolRow("Section separators", "separators", true))
     out.push(boolRow("Animations", "animations", true))
+    out.push(enumRow("Places cell", "placesStyle", ["minimal", "badge"], "minimal"))
+    out.push(boolRow("Places flame", "flame", true))
     out.push({ kind: "header", title: "Behaviour" })
     out.push(boolRow("Hover previews", "previews", true))
     out.push(intRow("Preview delay", "previewDelay", 450, 100, 1500, 50, " ms"))

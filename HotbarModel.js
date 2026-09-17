@@ -634,6 +634,8 @@ var SETTING_SPEC = {
   previews:         { type: "boolean", defaultValue: true },
   previewDelay:     { type: "integer", min: 100, max: 1500, defaultValue: 450 },
   animations:       { type: "boolean", defaultValue: true },
+  flame:            { type: "boolean", defaultValue: true },
+  placesStyle:      { type: "enum", options: ["minimal", "badge"], defaultValue: "minimal" },
   wheelCycle:       { type: "boolean", defaultValue: true },
   middleClick:      { type: "enum", options: ["new-window", "none"], defaultValue: "new-window" },
   showPlaces:       { type: "boolean", defaultValue: true },
@@ -653,7 +655,7 @@ var SETTING_SPEC = {
 var SETTING_KEYS = {
   pins: "array", matches: "array", favorites: "array",
   iconSize: "integer", spacing: "integer", iconStyle: "string", runningIndicator: "string",
-  separators: "boolean", previews: "boolean", previewDelay: "integer", animations: "boolean",
+  separators: "boolean", previews: "boolean", previewDelay: "integer", animations: "boolean", flame: "boolean", placesStyle: "string",
   wheelCycle: "boolean", middleClick: "string", showPlaces: "boolean", showRunning: "boolean",
   responsive: "boolean", showDesktop: "boolean", showDownloads: "boolean", showDocuments: "boolean",
   showPictures: "boolean", showMusic: "boolean", showVideos: "boolean", showTrash: "boolean", showMounts: "boolean"
