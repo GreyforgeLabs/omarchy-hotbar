@@ -7,17 +7,15 @@
   brighter on hover and while a popover is open. Two styles via the new
   **Places cell** setting (`placesStyle`): `minimal` (default) is cell-sized
   with a short amber bar in the middle; `badge` is longer and spells HOTBAR
-  in amber, the sweep running through the letters (the bar budget accounts
-  for its width; `hotbar state` reports `placesExtent`). The shimmer is one
-  tiny Canvas repaint at 30 fps, runs only while the cell is visible, and
-  honours **Animations** plus a new **Places flame** toggle (`flame`,
-  default on). Both are in Settings, the manifest and the CLI
+  in amber. The bar budget accounts for the wider style and `hotbar state`
+  reports its width as `placesExtent`. The shimmer repaints only while the
+  cell is visible, and honours **Animations** plus a new **Places flame**
+  toggle (`flame`, default on). Both are in Settings and the CLI
   (`hotbar set placesStyle badge`, `hotbar set flame false`).
-- Popovers lose the hexagon mark: headers are eyebrow + title (app menus
-  keep the app's own icon), empty drawers are text only, and the foot is a
-  faint "greyforge labs" line instead of the wordmark.
-- The first Places section is titled "Folders" (it sat under a popover
-  already titled Places).
+- Popovers are quieter and easier to scan: headers are a small eyebrow plus
+  the title (app menus keep the app's own icon), empty lists are plain text,
+  and the footer is a single faint line.
+- The first Places section is titled "Folders".
 - Screenshots refreshed.
 
 ## 0.2.4 — 2026-09-16

@@ -56,13 +56,15 @@ The app menu lists every window with its workspace and monitor, plus pin/unpin, 
   <img src="docs/screenshots/settings.png" alt="Hotbar Settings popover" width="360">
 </p>
 
-Right-click Places and pick *Hotbar Settings* — appearance, behaviour, visible cells, and Places sections are all there. Changes apply immediately and are validated before they are written. Behaviour also holds **Keep pointer in place**, which stops Hyprland moving the pointer when Hotbar focuses a window (system-wide; same as `hotbar warp off`).
+Right-click Places and pick *Hotbar Settings* — appearance, behaviour, visible cells, and Places sections are all there. Changes apply immediately and are validated before they are written. Appearance holds **Places cell** (`minimal` is a small pill with an amber bar; `badge` spells HOTBAR) and **Places flame** (the shimmer on the Places cell; needs **Animations** on). Behaviour also holds **Keep pointer in place**, which stops Hyprland moving the pointer when Hotbar focuses a window (system-wide; same as `hotbar warp off`).
 
 The CLI covers the same settings for scripting:
 
 ```bash
 hotbar set iconSize 20
 hotbar set iconStyle mono
+hotbar set placesStyle badge
+hotbar set flame false
 hotbar get previewDelay
 ```
 
