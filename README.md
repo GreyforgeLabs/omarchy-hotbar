@@ -126,7 +126,7 @@ Background reading: `docs/PLATFORM-AUDIT.md` (what the host provides), `docs/QUA
 
 - [Reprieve](https://github.com/GreyforgeLabs/reprieve) — a safety net for Super+W: the window hides instead of closing, one keystroke brings it back.
 - [Grabbar](https://github.com/GreyforgeLabs/omarchy-grabbar) — mouse-driven window controls for Omarchy: minimize, maximize, close, and move.
-- [Sley](https://github.com/sley-lang/sley) — a machine-native programming language for AI agents ([sleylang.org](https://sleylang.org)).
+- [Sley](https://github.com/sley-lang/sley) — a machine-native programming language for AI agents.
 - [All Greyforge Labs projects](https://github.com/GreyforgeLabs)
 
 ## License
