@@ -125,9 +125,9 @@ Background reading: `docs/PLATFORM-AUDIT.md` (what the host provides), `docs/QUA
 ## More from Greyforge Labs
 
 - [Reprieve](https://github.com/GreyforgeLabs/reprieve) — a safety net for Super+W: the window hides instead of closing, one keystroke brings it back.
-- [ZJX](https://zjx.greyforge.tech) — lossless archives for structured data, with measured size and speed results.
-- [Sley](https://sleylang.org) — an agent-native structural programming language for deterministic, reviewable software change.
-- [ForgeVideo](https://greyforge.tech/store/forgevideo) — a governed workflow kit that turns long-form video production into reviewable packets.
+- [Grabbar](https://github.com/GreyforgeLabs/omarchy-grabbar) — mouse-driven window controls for Omarchy: minimize, maximize, close, and move.
+- [Sley](https://github.com/sley-lang/sley) — a machine-native programming language for AI agents.
+- [All Greyforge Labs projects](https://github.com/GreyforgeLabs)
 
 ## License
 
