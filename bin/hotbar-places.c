@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 
 // Filesystem types findmnt --real leaves out and PlacesModel drops anyway.
@@ -94,7 +95,8 @@ static void unescape_hex(char *s) {
 struct mount {
     char *target, *source, *fstype, *options, *fsroot;
     char *label, *partlabel;
-    char *canon;   // realpath of source, for label matching
+    char *canon;            // realpath of source, for label matching
+    unsigned maj, min;      // the mount's device number from mountinfo
 };
 
 // One mountinfo line → mount (fields separated by single spaces; the
@@ -124,6 +126,7 @@ static int parse_line(char *line, struct mount *m) {
     unescape_octal(fields[3]);
     unescape_octal(fields[4]);
     unescape_octal(source);
+    if (sscanf(fields[2], "%u:%u", &m->maj, &m->min) != 2) m->maj = m->min = 0;
     m->fsroot = strdup(fields[3]);
     m->target = strdup(fields[4]);
     m->source = strdup(source);
@@ -180,8 +183,11 @@ static void merge_utab(struct mount *mounts, size_t count) {
     fclose(f);
 }
 
-// Labels come from the udev symlink farms; a mount's source matches when
-// both resolve to the same device node.
+// Labels come from the udev symlink farms. A mount matches a link when its
+// source resolves to the same device node, or when the link's device number
+// equals the mount's (mountinfo's maj:min) — the latter covers sources such
+// as /dev/root that exist as no path at all. btrfs reports an anonymous 0:N
+// device, so only real block numbers take part in that comparison.
 static void attach_labels(struct mount *mounts, size_t count, const char *dir, int part) {
     DIR *d = opendir(dir);
     if (!d) return;
@@ -191,9 +197,13 @@ static void attach_labels(struct mount *mounts, size_t count, const char *dir, i
         char link[PATH_MAX];
         if (snprintf(link, sizeof link, "%s/%s", dir, e->d_name) >= (int) sizeof link) continue;
         char *dev = realpath(link, NULL);
-        if (!dev) continue;
+        struct stat st;
+        int have_rdev = stat(link, &st) == 0 && S_ISBLK(st.st_mode);
+        if (!dev && !have_rdev) continue;
         for (size_t i = 0; i < count; i++) {
-            if (!mounts[i].canon || strcmp(mounts[i].canon, dev) != 0) continue;
+            int by_path = dev && mounts[i].canon && strcmp(mounts[i].canon, dev) == 0;
+            int by_number = have_rdev && mounts[i].maj != 0 && major(st.st_rdev) == mounts[i].maj && minor(st.st_rdev) == mounts[i].min;
+            if (!by_path && !by_number) continue;
             char *name = strdup(e->d_name);
             if (!name) continue;
             unescape_hex(name);
