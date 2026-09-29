@@ -215,11 +215,13 @@ static void attach_labels(struct mount *mounts, size_t count, const char *dir, i
     closedir(d);
 }
 
-// findmnt canonicalizes a source that exists as no path (/dev/root on cloud
-// images) to the real node via the device number; sysfs knows the name.
+// libmount always resolves the kernel's "/dev/root" to the real node via
+// the device number (whether or not a /dev/root exists), and does the same
+// for any source that exists as no path; sysfs knows the node's name.
 static void canonical_source(struct mount *m) {
     struct stat st;
-    if (m->source[0] != '/' || stat(m->source, &st) == 0 || m->maj == 0) return;
+    if (m->maj == 0 || m->source[0] != '/') return;
+    if (strcmp(m->source, "/dev/root") != 0 && stat(m->source, &st) == 0) return;
     char path[64];
     snprintf(path, sizeof path, "/sys/dev/block/%u:%u/uevent", m->maj, m->min);
     FILE *f = fopen(path, "r");
