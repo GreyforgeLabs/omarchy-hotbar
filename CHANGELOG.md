@@ -42,7 +42,8 @@ falls back to the previous implementation when it is absent.
   - Places helper: 12.4 ms → 0.8 ms (16×/18×).
   - shell CPU with the flame on, same sandbox: 29–34 ‰ of a core (0.2.5
     Canvas) → 9–12 ‰ (0.3.0 shader at 24 fps); 0 ‰ with the flame off in
-    both. The live shell measured 47–52 ‰ with 0.2.5 before this work.
+    both. The live shell measured 47–52 ‰ with 0.2.5 before this work; the
+    live CLI numbers after the update match the sandbox ones.
   These are local measurements of the optional native path, not a guarantee
   for every system.
 - Tests: `tests/test_native_cli.sh` (7: native transport, discrete fields,

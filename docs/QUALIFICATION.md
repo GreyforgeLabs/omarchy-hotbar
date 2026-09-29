@@ -8,8 +8,8 @@ implementation.
 
 Machine: greyarch — Omarchy 4.0.3, Hyprland 0.56.2, Quickshell 0.3.1,
 Qt 6.11.2 (qsb from qt6-shadertools 6.11.2), gcc/cc 15. Date: 2026-09-29.
-The live session was locked for the whole run, so the live shell was not
-restarted; the widget A/B ran in an isolated sandbox shell (a real
+The live session was locked for most of the run, so the widget A/B ran in
+an isolated sandbox shell (a real
 `qs -p /usr/share/omarchy/shell` with a private HOME) inside a nested
 Hyprland on a headless output, as in the 0.2.4/0.2.5 UI passes.
 
@@ -46,10 +46,18 @@ same sandbox shell, same nested output, same layout:
 | 0.3.0 shader, 24 fps (shipped) | 9, 12, 11 | 0 |
 
 The live shell (DP-2 2560×1440, full widget set) measured 52, 47, 50 ‰ with
-0.2.5 and 2–4 ‰ with the flame off before this work; it was not re-measured
-with 0.3.0 because the session stayed locked (no shell restart). What
-remains with the shader is the bar window re-rendering per tick; the frame
-rate is the knob.
+0.2.5 and 2–4 ‰ with the flame off before this work. 0.3.0 was loaded into
+the live shell with `omarchy restart shell` at 00:37 (socket served,
+`hotbar doctor` all ok, live `bench_native.py` within noise of the sandbox
+numbers below), but the live flame reading afterwards (1–2 ‰) is **not
+comparable**: the session had re-locked with the display DPMS-off, so the
+bar was hardly rendering at all. The controlled comparison is the sandbox
+table above. What remains with the shader is the bar window re-rendering
+per tick; the frame rate is the knob.
+
+Live `bench_native.py` (30 launches, 0.3.0 widget): `hotbar pins`
+98.3 → 7.3 ms (13×), `hotbar activate` 97.2 → 6.5 ms (15×), one call
+30.1 → 0.6 ms (48×), Places 12.3 → 0.8 ms (16×).
 
 ## Security
 
