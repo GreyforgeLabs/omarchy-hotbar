@@ -215,6 +215,29 @@ static void attach_labels(struct mount *mounts, size_t count, const char *dir, i
     closedir(d);
 }
 
+// findmnt canonicalizes a source that exists as no path (/dev/root on cloud
+// images) to the real node via the device number; sysfs knows the name.
+static void canonical_source(struct mount *m) {
+    struct stat st;
+    if (m->source[0] != '/' || stat(m->source, &st) == 0 || m->maj == 0) return;
+    char path[64];
+    snprintf(path, sizeof path, "/sys/dev/block/%u:%u/uevent", m->maj, m->min);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    char *line = NULL;
+    size_t cap = 0;
+    while (getline(&line, &cap, f) > 0) {
+        if (strncmp(line, "DEVNAME=", 8) != 0) continue;
+        line[strcspn(line, "\n")] = 0;
+        size_t n = strlen(line + 8) + 6;
+        char *dev = malloc(n);
+        if (dev) { snprintf(dev, n, "/dev/%s", line + 8); free(m->source); m->source = dev; }
+        break;
+    }
+    free(line);
+    fclose(f);
+}
+
 static int emit_mounts(FILE *out) {
     FILE *f = fopen("/proc/self/mountinfo", "r");
     if (!f) { fputs("null", out); return -1; }
@@ -232,6 +255,7 @@ static int emit_mounts(FILE *out) {
             if (!grown) { free_mount(&m); break; }
             mounts = grown;
         }
+        canonical_source(&m);
         m.canon = m.source[0] == '/' ? realpath(m.source, NULL) : NULL;
         mounts[count++] = m;
     }
