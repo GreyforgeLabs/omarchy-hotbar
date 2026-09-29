@@ -1,3 +1,69 @@
+# Hotbar 0.3.0 — Qualification record (addendum over 0.2.5)
+
+0.2.5 gates below remain valid: no change to what the widget shows or how it
+is driven. 0.3.0 adds an optional native fast path — a Unix socket served by
+the widget plus a C client for the CLI, a C Places helper, and the flame
+shimmer as a fragment shader — each with a fallback to the previous
+implementation.
+
+Machine: greyarch — Omarchy 4.0.3, Hyprland 0.56.2, Quickshell 0.3.1,
+Qt 6.11.2 (qsb from qt6-shadertools 6.11.2), gcc/cc 15. Date: 2026-09-29.
+The live session was locked for the whole run, so the live shell was not
+restarted; the widget A/B ran in an isolated sandbox shell (a real
+`qs -p /usr/share/omarchy/shell` with a private HOME) inside a nested
+Hyprland on a headless output, as in the 0.2.4/0.2.5 UI passes.
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Offline suite | PASS | `tests/run.sh` green: model 42, places 9, registry 9 (+3 socket ownership), manifest 8, warp-ui 14, places-native 5, lifecycle 9, retry 3, warp 12, native-cli 7; `bash -n` on every script; `omarchy plugin validate .` |
+| Native build | PASS | `make native` with `-std=c11 -Wall -Wextra`, no warnings; `make shaders` regenerates `flame.frag.qsb` byte-identically (SPIR-V + GLSL 100es/120/150 + HLSL + MSL) |
+| Static | PASS | ShellCheck 0.11.0 clean on `bin/hotbar`, `bin/hotbar-places`, `tests/run.sh`, `tests/test_lifecycle.sh`, `tests/test_retry.sh`, `tests/test_warp.sh`, `tests/test_native_cli.sh`, `tests/live/acceptance.sh` |
+| Socket protocol | PASS | standalone Quickshell prototype: request → one-line reply → server closes; a stale socket file from a dead server is replaced (`quickshell.io.socket: Deleted existing file`); `hotbar-native` exit codes 0/1/2/111/112 exercised |
+| Places equivalence | PASS | `tests/test_places_native.js` on this host: identical `exists`, identical `trashHandler`, every findmnt mount present with the same fstype/fsroot/label/partlabel/source and every kernel option; `PlacesModel.buildPlaces` deep-equal from either helper (9 real mounts incl. btrfs subvolumes, ext4 bind mounts, vfat EFI with LABEL and PARTLABEL) |
+| Sandbox live | PASS | 0.3.0 loaded in the sandbox shell: `state` reports `nativeSocket` at `$XDG_RUNTIME_DIR/greyforge.hotbar-<sig>.sock` and `nativePlaces: true`, 5 cells; `hotbar-native ping` → `ok`; `setSetting`/`getSetting` through the socket round-trip; pins and Running drawer render as in 0.2.5 (grim from inside the nested session) |
+| CLI fallback | PASS | `test_native_cli.sh`: no socket → one `omarchy-shell hotbar activateIndex` and nothing else; hung widget (no answer within the timeout) → error, zero omarchy-shell calls; `HOTBAR_NO_NATIVE=1` → socket never contacted |
+| Shader | PASS | `FlamePill` grabbed offscreen from a standalone shell instance on the headless output: minimal and badge, horizontal and vertical, lit and unlit; pill outline, ember glow, amber bar, letter-spaced HOTBAR with the sweep. Sandbox bar crops of 0.2.5 and 0.3.0 match |
+
+## Performance
+
+`tests/bench_native.py` against the sandbox widget, medians of 40 launches,
+wall = process lifetime, CPU = child rusage (user+sys):
+
+| Path | 0.2.5 (portable) | 0.3.0 (native) | Ratio |
+|---|---|---|---|
+| `hotbar pins` end to end | 98.3 ms / 100.0 ms CPU | 7.3 ms / 9.2 ms CPU | 14× / 11× |
+| `hotbar activate 1` (preflight + call) | 98.0 ms / 97.5 ms | 6.6 ms / 6.5 ms | 15× / 15× |
+| one widget call (`omarchy-shell hotbar ping` → `hotbar-native ping`) | 30.4 ms / 30.1 ms | 0.6 ms / 0.5 ms | 49× / 64× |
+| Places helper, 7 paths | 12.4 ms / 12.4 ms | 0.8 ms / 0.7 ms | 16× / 18× |
+
+Shell CPU (`/proc/<pid>/stat` utime+stime over 20 s windows, ‰ of one core),
+same sandbox shell, same nested output, same layout:
+
+| Widget | flame on | flame off |
+|---|---|---|
+| 0.2.5 Canvas, 30 fps | 29, 32, 34 | 0 |
+| 0.3.0 shader, 30 fps (intermediate) | 15, 14, 15 | 0 |
+| 0.3.0 shader, 24 fps (shipped) | 9, 12, 11 | 0 |
+
+The live shell (DP-2 2560×1440, full widget set) measured 52, 47, 50 ‰ with
+0.2.5 and 2–4 ‰ with the flame off before this work; it was not re-measured
+with 0.3.0 because the session stayed locked (no shell restart). What
+remains with the shader is the bar window re-rendering per tick; the frame
+rate is the knob.
+
+## Security
+
+- The socket lives in the 0700 runtime directory and is served by one
+  instance per shell. `serveRequest` dispatches only names in the
+  `socketMethods` allowlist to the IpcHandler's own functions, with the
+  exact arity qs enforces; unknown names answer `Function not found.`
+- The C client refuses arguments containing a newline or 0x1f (the field
+  separator) and never interprets the reply beyond passing it through.
+- `hotbar-places-native` runs no commands: paths are only ever `stat`ed,
+  mount data comes from `/proc/self/mountinfo`, `/run/mount/utab` and
+  `readlink` of the udev symlink farms; all strings are JSON-escaped.
+- The fallback never repeats a call that may have reached the widget.
+
 # Hotbar 0.2.3 — Qualification record (addendum over 0.2.2)
 
 0.2.2 gates below remain valid: the 0.2.2 CLI/backend behaviour is

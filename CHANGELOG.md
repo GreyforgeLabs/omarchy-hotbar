@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.3.0 — 2026-09-29
+
+The native release: the same widget, with its hot paths moved out of shell
+scripts and JavaScript into C and a GPU shader. Nothing changes in how
+Hotbar looks or is driven; `make native` in the plugin directory builds the
+optional fast path (a C compiler and libc are all it needs) and everything
+falls back to the previous implementation when it is absent.
+
+- **The CLI reaches the widget in under a millisecond.** The widget now
+  serves its IPC surface on a Unix socket of its own
+  (`$XDG_RUNTIME_DIR/greyforge.hotbar-<session>.sock`, one instance per
+  shell, claimed like the `hotbar` IPC target). `bin/hotbar-native` (C)
+  talks to it directly; `bin/hotbar` uses it when built and falls back to
+  `omarchy-shell` otherwise (`HOTBAR_NO_NATIVE=1` forces the portable path).
+  A call that may have reached the widget is never repeated on the fallback.
+  Every request is dispatched to the same IpcHandler functions with the same
+  argument counts qs enforces; nothing new is reachable. `hotbar state`
+  reports `nativeSocket` and `nativePlaces`; `hotbar doctor` reports both.
+  Bind `hotbar-native activateIndex 1` for the fastest Super+1.
+- **Places helper in C.** `bin/hotbar-places-native` reads
+  `/proc/self/mountinfo`, `/run/mount/utab` and the `/dev/disk/by-*label`
+  links instead of running findmnt, grep and jq, and prints the same JSON;
+  `PlacesModel.js` builds identical sections from either
+  (`tests/test_places_native.js` proves it on the host). The widget probes
+  the binary once and uses it when present.
+- **The flame is a fragment shader.** The Places cell's Canvas repainted
+  gradients and letters in JavaScript 30 times a second, around the clock.
+  `components/FlamePill.qml` draws the pill, glow, sweep and HOTBAR letters
+  with one precompiled shader (`components/shaders/flame.frag`, `.qsb`
+  shipped); the CPU only nudges two numbers per tick, now at 24 fps with
+  the sweep speed unchanged. Same look, in both styles and orientations.
+- Performance, measured on greyarch (Omarchy 4.0.3, Quickshell 0.3.1;
+  medians of 40 launches, `tests/bench_native.py`; the shell A/B in an
+  isolated sandbox shell on a headless output, `/proc/<pid>/stat` ticks over
+  20 s windows):
+  - `hotbar pins` end to end: 98 ms → 7 ms wall, 100 ms → 9 ms CPU (14×/11×).
+  - `hotbar activate 1` as a keybind runs it: 98 ms → 7 ms (15×/15×).
+  - one call to the widget (`omarchy-shell hotbar ping` → `hotbar-native ping`):
+    30.4 ms → 0.6 ms wall, 30 ms → 0.5 ms CPU (49×/64×).
+  - Places helper: 12.4 ms → 0.8 ms (16×/18×).
+  - shell CPU with the flame on, same sandbox: 29–34 ‰ of a core (0.2.5
+    Canvas) → 9–12 ‰ (0.3.0 shader at 24 fps); 0 ‰ with the flame off in
+    both. The live shell measured 47–52 ‰ with 0.2.5 before this work.
+  These are local measurements of the optional native path, not a guarantee
+  for every system.
+- Tests: `tests/test_native_cli.sh` (7: native transport, discrete fields,
+  refusal reporting, fallback acts once, `HOTBAR_NO_NATIVE`, no repeat after
+  a hung widget, client exit codes), `tests/test_places_native.js` (5),
+  three registry tests for socket ownership; the mock-based CLI tests pin
+  the portable transport so they can never reach a live widget. CI builds
+  the native path and runs the suite with it.
+
 ## 0.2.5 — 2026-09-17
 
 - The Places cell is a hot bar: a hollow pill with a red outline, with a

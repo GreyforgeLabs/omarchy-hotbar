@@ -81,7 +81,36 @@ hotbar unpin chromium
 
 `hotbar identify` shows how every open window was grouped, which is what you need to write an override.
 
-Pinned slots are addressable for key bindings — `omarchy-shell hotbar activateIndex 1` opens slot 1, so you can bind Super+1..9 in your Hyprland config.
+Pinned slots are addressable for key bindings — `hotbar activate 1` opens slot 1, so you can bind Super+1..9 in your Hyprland config. With the native fast path built (below), bind `hotbar-native activateIndex 1` from the plugin's `bin/` directory instead: it reaches the widget in well under a millisecond.
+
+## Native fast path
+
+Hotbar's hot paths are available in C, behind the same commands:
+
+```bash
+cd ~/.config/omarchy/plugins/greyforge.hotbar
+make native          # needs a C compiler; libc is the only dependency
+hotbar doctor        # "ok   native fast path: hotbar-native reaches the widget socket"
+```
+
+- `bin/hotbar-native` talks to a Unix socket the widget serves itself
+  (`$XDG_RUNTIME_DIR/greyforge.hotbar-<session>.sock`) instead of launching a
+  Qt process for every call. The `hotbar` CLI uses it automatically and falls
+  back to `omarchy-shell` when it is not built or the widget is not up; set
+  `HOTBAR_NO_NATIVE=1` to force the portable path. A call that may have
+  reached the widget is never repeated on the fallback.
+- `bin/hotbar-places-native` gathers the Places data (mounts, labels, trash
+  handler, folder existence) from `/proc` and `/dev/disk` directly; the widget
+  uses it when present and the shell helper otherwise.
+- The flame shimmer on the Places cell is a fragment shader
+  (`components/shaders/flame.frag`, shipped precompiled), so it no longer
+  repaints a Canvas in JavaScript on every tick.
+
+Measured locally (medians of 40 launches, `make bench`): a full CLI command
+went from about 98 ms to 7 ms; one call to the widget from 30 ms to 0.6 ms;
+the Places helper from 12 ms to 0.8 ms; and the shell's CPU while the flame
+shimmers dropped by about two thirds. `docs/QUALIFICATION.md` has the method.
+`make clean` removes the binaries; the widget keeps working without them.
 
 ## Cursor warps (pointer jumps to center)
 
@@ -103,7 +132,7 @@ which always shows the real Hyprland state when Settings opens.
 
 ## Compatibility and safety
 
-Needs Omarchy 4.x with Hyprland in Lua-config mode. HOTBAR has no daemon and does no background polling while idle; Places runs one short helper when it opens. A 41-window acceptance run against the live shell keeps the bar surface byte-identical before and after — see `docs/QUALIFICATION.md`.
+Needs Omarchy 4.x with Hyprland in Lua-config mode. HOTBAR has no daemon and does no background polling while idle; Places runs one short helper when it opens. The native socket is served by the widget inside the shell (no extra process), lives in the user's 0700 runtime directory, and only dispatches to the same IPC functions `omarchy-shell hotbar …` reaches. A 41-window acceptance run against the live shell keeps the bar surface byte-identical before and after — see `docs/QUALIFICATION.md`.
 
 ## Removal
 
@@ -116,9 +145,15 @@ That removes the CLI symlink it owns, the HOTBAR state mirror, and the plugin it
 ## Development
 
 ```bash
-bash tests/run.sh                # offline: models, lifecycle, retry, parity
+make native                      # C client + C Places helper (optional fast path)
+make shaders                     # recompile components/shaders/*.frag (needs qt6-shadertools)
+bash tests/run.sh                # offline: models, lifecycle, retry, parity, native helpers
+make bench                       # native vs portable latency/CPU against the live widget
 tests/live/acceptance.sh         # live shell: 41-window scenario, popovers, cycling
 ```
+
+The offline suite runs the native tests when the binaries are built and skips
+them otherwise; CI builds them.
 
 Background reading: `docs/PLATFORM-AUDIT.md` (what the host provides), `docs/QUALIFICATION.md` (release-gate evidence), `CHANGELOG.md` (release history).
 

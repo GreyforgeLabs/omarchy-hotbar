@@ -13,7 +13,13 @@ jobs:
         with:
           node-version: "22"
       - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq shellcheck
+        run: sudo apt-get update && sudo apt-get install -y jq shellcheck build-essential
+      - name: Build the native fast path
+        run: make native
+      - name: Native helpers
+        run: |
+          node tests/test_places_native.js
+          bash tests/test_native_cli.sh
       - name: Model tests
         run: |
           node tests/test_model.js
@@ -32,7 +38,8 @@ jobs:
           bash -n bin/hotbar-places
           bash -n tests/run.sh
           bash -n tests/test_warp.sh
+          bash -n tests/test_native_cli.sh
           bash -n tests/live/acceptance.sh
           jq -e . manifest.json
       - name: ShellCheck
-        run: shellcheck bin/hotbar bin/hotbar-places tests/run.sh tests/test_lifecycle.sh tests/test_retry.sh tests/test_warp.sh tests/live/acceptance.sh
+        run: shellcheck bin/hotbar bin/hotbar-places tests/run.sh tests/test_lifecycle.sh tests/test_retry.sh tests/test_warp.sh tests/test_native_cli.sh tests/live/acceptance.sh

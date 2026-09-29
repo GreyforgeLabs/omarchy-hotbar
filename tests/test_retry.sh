@@ -8,6 +8,10 @@
 # permanent unavailability fails cleanly without running the action.
 set -euo pipefail
 
+# These tests exercise the portable omarchy-shell transport with mocks; the
+# native socket client must not reach a live widget on the developer machine.
+export HOTBAR_NO_NATIVE=1
+
 PASS=0
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { PASS=$((PASS + 1)); echo "ok   $*"; }

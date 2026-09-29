@@ -6,3 +6,5 @@ demo/render/
 demo/v1/
 demo/v2/
 demo/v3/
+bin/hotbar-native
+bin/hotbar-places-native

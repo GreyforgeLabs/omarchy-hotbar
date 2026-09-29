@@ -58,14 +58,41 @@ warp_on_change_workspace by default)
 EOF
 }
 
-ipc() { omarchy-shell hotbar "$@"; }
+# Two transports reach the widget. The fast path is bin/hotbar-native (built
+# by `make native`): it talks to the widget's own Unix socket in well under a
+# millisecond, and connecting is the liveness check. The portable path is
+# `omarchy-shell hotbar …`, a Qt process launch per call, preceded by the
+# preflight below. HOTBAR_NO_NATIVE=1 forces the portable path.
+HOTBAR_NATIVE_BIN="$(dirname "$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || readlink -f "${BASH_SOURCE[0]}")")/hotbar-native"
+hotbar_native_bin() { printf '%s' "$HOTBAR_NATIVE_BIN"; }
+hotbar_native_usable() { [[ -z "${HOTBAR_NO_NATIVE:-}" && -x "$HOTBAR_NATIVE_BIN" ]]; }
 
-# Preflight before every HOTBAR IPC command: confirm omarchy-shell itself is
+ipc() {
+  if hotbar_native_usable; then
+    local rc=0
+    "$HOTBAR_NATIVE_BIN" -- "$@" || rc=$?
+    # 111: no socket to connect to, so nothing reached the widget and the
+    # portable path may run the call — once, after its own preflight. Any
+    # other failure (including 112, no answer) is final: a call that may
+    # have been applied is never repeated.
+    (( rc == 111 )) || return $rc
+    hotbar_preflight_portable || return $?
+  fi
+  omarchy-shell hotbar "$@"
+}
+
+# Before every HOTBAR IPC command. With the native client, nothing to do: the
+# connect in ipc() is the check. Otherwise confirm omarchy-shell itself is
 # running, then poll `hotbar ping` for a short bounded period (the widget
 # re-registers its IPC target ~400 ms after a plugin hot-reload). The
 # requested operation is then performed exactly once — state-changing calls
 # are never blindly retried.
 hotbar_preflight() {
+  hotbar_native_usable && return 0
+  hotbar_preflight_portable
+}
+
+hotbar_preflight_portable() {
   if ! omarchy-shell shell ping >/dev/null 2>&1; then
     echo "hotbar: omarchy-shell is not running" >&2
     return 1
@@ -345,6 +372,21 @@ cmd_doctor() {
     *":$HOME/.local/bin:"*) echo "ok   ~/.local/bin is in PATH" ;;
     *) echo "warn  ~/.local/bin is not in PATH (hotbar will not resolve by name)" ;;
   esac
+  native="$HOTBAR_NATIVE_BIN"
+  if [[ -x "$native" ]]; then
+    if hotbar_native_usable && "$native" ping >/dev/null 2>&1; then
+      echo "ok   native fast path: hotbar-native reaches the widget socket"
+    else
+      echo "note  hotbar-native is built but the widget socket is not answering (restart the shell after updating Hotbar); using omarchy-shell"
+    fi
+  else
+    echo "note  native fast path not built (optional: run 'make native' in the plugin directory)"
+  fi
+  if [[ -x "$(dirname "$native")/hotbar-places-native" ]]; then
+    echo "ok   native Places helper built"
+  else
+    echo "note  native Places helper not built (optional: make native)"
+  fi
   check command -v jq
   check command -v findmnt
   check command -v xdg-open

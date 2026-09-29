@@ -380,7 +380,10 @@ BarWidget {
     Registry.register(registeredScreen, root)
     root.resetLayoutProbe()
   }
-  Component.onDestruction: Registry.unregister(registeredScreen, root)
+  Component.onDestruction: {
+    Registry.unregister(registeredScreen, root)
+    Registry.releaseSocket(root)
+  }
 
   Component.onCompleted: {
     refreshEntryIndex()
@@ -594,12 +597,24 @@ BarWidget {
     }
   }
 
+  // `make native` builds bin/hotbar-places-native (C, same output as the
+  // shell helper, without findmnt/grep/jq). Its presence is probed once;
+  // the shell helper stays the fallback.
+  property bool nativePlacesReady: false
+  FileView {
+    path: root.pluginDir + "/bin/hotbar-places-native"
+    printErrors: false
+    onLoaded: root.nativePlacesReady = true
+    onLoadFailed: root.nativePlacesReady = false
+  }
+  readonly property string placesHelper: root.pluginDir + (nativePlacesReady ? "/bin/hotbar-places-native" : "/bin/hotbar-places")
+
   function refreshPlaces() {
     // Build immediately from what we know so the popover opens instantly,
     // then let the helper refine (existence, mounts, trash) when it returns.
     placesSections = Places.buildPlaces(placesInput())
     if (placesProcess.running) return
-    placesProcess.command = [root.pluginDir + "/bin/hotbar-places"].concat(Places.candidatePaths(placesInput()))
+    placesProcess.command = [root.placesHelper].concat(Places.candidatePaths(placesInput()))
     placesProcess.running = true
     placesWatchdog.restart()
   }
@@ -1173,7 +1188,7 @@ BarWidget {
     id: ipcRegisterTimer
     interval: 400
     running: true
-    onTriggered: ipc.enabled = true
+    onTriggered: { ipc.enabled = true; root.claimSocket() }
   }
   IpcHandler {
     id: ipc
@@ -1324,9 +1339,72 @@ BarWidget {
         previewGroup: root.previewGroup ? root.previewGroup.key : "",
         previewTimerRunning: previewTimer.running,
         previewDebug: root.previewDebug,
+        nativeSocket: nativeServer.active ? root.socketPath : "",
+        nativePlaces: root.nativePlacesReady,
         placesSections: root.placesSections.map(function(s) { return { id: s.id, rows: s.rows.map(function(r) { return r.name + " -> " + r.path }) } }),
         cells: root.cellGeometry()
       })
+    }
+  }
+
+  // --------------------------------------------------------- native socket
+
+  // The same surface as the `hotbar` IPC target, on a Unix socket of the
+  // widget's own, for bin/hotbar-native (and bin/hotbar through it). Going
+  // through `omarchy-shell` costs a Qt process launch per call; this costs a
+  // connect. One instance per shell serves it (claimed through the registry,
+  // like the IPC target); the socket sits in the 0700 runtime directory and
+  // Quickshell replaces a stale file from a previous shell. Requests are one
+  // line: method and arguments joined by 0x1f. Nothing new is reachable
+  // here — every request is dispatched to the IpcHandler's own functions,
+  // with the same argument count qs would demand.
+  readonly property string socketSession: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || Quickshell.env("WAYLAND_DISPLAY") || ""
+  readonly property string socketPath: Quickshell.env("XDG_RUNTIME_DIR") && socketSession && socketSession.indexOf("/") === -1
+    ? Quickshell.env("XDG_RUNTIME_DIR") + "/greyforge.hotbar-" + socketSession + ".sock" : ""
+  property bool socketOwner: false
+  readonly property var socketMethods: ({
+    pin: 1, unpin: 1, setPins: 1, pins: 0, ping: 0, setSetting: 2, getSetting: 1, open: 1, close: 0,
+    openOn: 2, closeOn: 1, screens: 0, activate: 1, activateIndex: 1, newWindow: 1, cycle: 1, identify: 0, state: 0
+  })
+
+  function claimSocket() { socketOwner = Registry.claimSocket(root) }
+
+  // The outgoing instance of a hot-reload may still own the socket when the
+  // new one first asks; keep asking until it is gone.
+  Timer {
+    interval: 1000
+    repeat: true
+    running: ipc.enabled && !root.socketOwner && root.socketPath !== ""
+    onTriggered: root.claimSocket()
+  }
+
+  function serveRequest(line) {
+    var parts = String(line).split("\x1f")
+    var method = parts.shift()
+    var arity = socketMethods[method]
+    if (arity === undefined || typeof ipc[method] !== "function") return "Function not found."
+    if (parts.length < arity) return "Too few arguments provided to function " + method
+    if (parts.length > arity) return "Too many arguments provided to function " + method
+    var result = ipc[method].apply(ipc, parts)
+    return result === undefined || result === null ? "" : String(result)
+  }
+
+  SocketServer {
+    id: nativeServer
+    active: root.socketOwner && root.socketPath !== ""
+    path: root.socketPath
+    handler: Socket {
+      id: conn
+      parser: SplitParser {
+        splitMarker: "\n"
+        onRead: function(line) {
+          var reply
+          try { reply = root.serveRequest(line) } catch (e) { reply = "error: " + e }
+          conn.write(reply + "\n")
+          conn.flush()
+          conn.connected = false
+        }
+      }
     }
   }
 

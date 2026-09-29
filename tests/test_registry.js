@@ -16,7 +16,7 @@ function test(name, fn) {
 
 const src = fs.readFileSync(path.join(__dirname, "..", "HotbarRegistry.js"), "utf8")
 const stripped = src.split("\n").filter(l => l.trim() !== ".pragma library").join("\n")
-const factory = new Function(`${stripped}; return { register, unregister, lookup, screens };`)
+const factory = new Function(`${stripped}; return { register, unregister, lookup, screens, claimSocket, releaseSocket, socketOwnedBy };`)
 const R = factory()
 
 const a = { id: "a" }, b = { id: "b" }
@@ -55,6 +55,27 @@ test("unregister the correct instance", () => {
 test("unknown screens look up null", () => {
   assert.strictEqual(R.lookup("NOPE"), null)
   assert.strictEqual(R.lookup(""), null)
+})
+
+test("first instance claims the native socket, a second is refused", () => {
+  assert.strictEqual(R.claimSocket(a), true)
+  assert.strictEqual(R.claimSocket(b), false)
+  assert.strictEqual(R.socketOwnedBy(a), true)
+  assert.strictEqual(R.socketOwnedBy(b), false)
+})
+
+test("the owner may re-claim; releasing by a non-owner is a no-op", () => {
+  assert.strictEqual(R.claimSocket(a), true)
+  R.releaseSocket(b)
+  assert.strictEqual(R.socketOwnedBy(a), true)
+})
+
+test("after the owner releases, the next instance may claim", () => {
+  R.releaseSocket(a)
+  assert.strictEqual(R.socketOwnedBy(a), false)
+  assert.strictEqual(R.claimSocket(b), true)
+  R.releaseSocket(b)
+  assert.strictEqual(R.claimSocket(null), false)
 })
 
 console.log("HotbarRegistry: " + passed + " tests passed")
