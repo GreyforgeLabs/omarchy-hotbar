@@ -24,8 +24,11 @@ in how Hotbar looks or is driven.
   escapes are decoded only from real hex digits; labels attach by device
   number with one `fstatat` per `/dev/disk` link instead of resolving every
   path (`realpath` is gone); the trash-handler check reads each MIME file in
-  one go. In-process work per run dropped from about 330 µs to 240 µs on
-  the test machine. `HOTBAR_MOUNTINFO` / `HOTBAR_UTAB` point it at fixture files for
+  one go. A `/dev/root` source, or any source that exists as no path, is
+  resolved to its real device node through sysfs, as findmnt (the shell
+  fallback) reports it, so the native and shell helpers name the same
+  device and its label attaches. In-process work per run dropped from
+  about 330 µs to 240 µs on the test machine. `HOTBAR_MOUNTINFO` / `HOTBAR_UTAB` point it at fixture files for
   tests.
 - **Native client stays in its session.** With `HYPRLAND_INSTANCE_SIGNATURE`
   or `WAYLAND_DISPLAY` set, `hotbar-native` only talks to that session's
