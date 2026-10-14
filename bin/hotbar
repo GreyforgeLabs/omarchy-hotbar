@@ -63,8 +63,10 @@ EOF
 # millisecond, and connecting is the liveness check. The portable path is
 # `omarchy-shell hotbar …`, a Qt process launch per call, preceded by the
 # preflight below. HOTBAR_NO_NATIVE=1 forces the portable path.
-HOTBAR_NATIVE_BIN="$(dirname "$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || readlink -f "${BASH_SOURCE[0]}")")/hotbar-native"
-hotbar_native_bin() { printf '%s' "$HOTBAR_NATIVE_BIN"; }
+# Resolved once: the canonical path of this CLI (through the ~/.local/bin
+# link) locates hotbar-native next to it and is what ownership checks compare.
+HOTBAR_CLI_SOURCE="$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || readlink -f "${BASH_SOURCE[0]}")"
+HOTBAR_NATIVE_BIN="${HOTBAR_CLI_SOURCE%/*}/hotbar-native"
 hotbar_native_usable() { [[ -z "${HOTBAR_NO_NATIVE:-}" && -x "$HOTBAR_NATIVE_BIN" ]]; }
 
 ipc() {
@@ -111,9 +113,7 @@ hotbar_preflight_portable() {
 need_shell() { hotbar_preflight; }
 
 # Canonical path of this HOTBAR CLI, for ownership comparisons.
-hotbar_cli_source() {
-  realpath "${BASH_SOURCE[0]}" 2>/dev/null || readlink -f "${BASH_SOURCE[0]}"
-}
+hotbar_cli_source() { printf '%s' "$HOTBAR_CLI_SOURCE"; }
 
 hotbar_cli_link() { printf '%s' "$HOME/.local/bin/hotbar"; }
 
@@ -291,7 +291,7 @@ cmd_warp_status() {
 
 cmd_warp_apply() {
   # cmd_warp_apply <off|on>
-  local mode="${1:-off}" file="" tmp="" backup=""
+  local mode="${1:-off}" file="" tmp="" backup="" desired_block="" current_block="" n=1
   [[ "$mode" == "on" || "$mode" == "off" ]] || { echo "hotbar: warp expects off|on|status" >&2; return 1; }
   file="$(hypr_looknfeel_file)"
   mkdir -p "$(dirname "$file")"
@@ -310,7 +310,10 @@ cmd_warp_apply() {
     echo "Cursor warps already $mode (managed block up to date; nothing changed)."
     return 0
   fi
+  # Two applies within one second must not overwrite the first backup: it
+  # may be the only copy of the file as the user left it.
   backup="${file}.bak.$(date +%s)"
+  while [[ -e "$backup" || -L "$backup" ]]; do backup="${backup%.bak.*}.bak.$(date +%s).$((n++))"; done
   cp -- "$file" "$backup" && echo "Backed up $file to $backup"
   tmp="$(mktemp)"
   awk -v begin="$(warp_block_begin)" -v end="$(warp_block_end)" '
@@ -444,7 +447,12 @@ case "$cmd" in
         done
         ipc setPins "$joined" ;;
       clear) ipc setPins "" ;;
-      "") ipc pins | tr '|' '\n' | sed '/^$/d' ;;
+      "")
+        # One key per line, split in the shell (no tr/sed processes).
+        reply="$(ipc pins)"
+        IFS='|' read -ra keys <<<"$reply"
+        for k in "${keys[@]}"; do [[ -n "$k" ]] && printf '%s\n' "$k"; done
+        exit 0 ;;
       *) echo "hotbar pins [set <app>...|clear]" >&2; exit 1 ;;
     esac ;;
   open)

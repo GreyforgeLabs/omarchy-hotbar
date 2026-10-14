@@ -128,7 +128,23 @@ grep -qx 'activateIndex|1' "$WORK/requests.log" || fail "the call never reached 
 pass "a call the widget may have applied is not repeated on the portable path"
 stop_widget
 
-# 7. the client itself: exit codes
+# 7. socket discovery: inside a session only that session's socket counts;
+# without session variables the newest widget socket is used
+mkdir -p "$WORK/run"
+OTHER="$WORK/run/greyforge.hotbar-othersession.sock"
+python3 "$WORK/widget.py" "$OTHER" "$WORK/other.log" normal &
+OTHER_PID=$!
+for _ in $(seq 1 50); do [[ -S "$OTHER" ]] && break; sleep 0.02; done
+rc=0
+env -u HOTBAR_SOCKET -u WAYLAND_DISPLAY XDG_RUNTIME_DIR="$WORK/run" HYPRLAND_INSTANCE_SIGNATURE=mysession "$NATIVE" ping >/dev/null 2>&1 || rc=$?
+(( rc == 111 )) || { kill "$OTHER_PID"; fail "a missing session socket should exit 111, not reach another session (rc=$rc)"; }
+[[ ! -s "$WORK/other.log" ]] || { kill "$OTHER_PID"; fail "another session's widget was contacted"; }
+out="$(env -u HOTBAR_SOCKET -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE XDG_RUNTIME_DIR="$WORK/run" "$NATIVE" ping)" || { kill "$OTHER_PID"; fail "no-session discovery failed"; }
+kill "$OTHER_PID" 2>/dev/null || true; wait "$OTHER_PID" 2>/dev/null || true
+[[ "$out" == ok ]] || fail "no-session discovery gave: $out"
+pass "inside a session only its own widget socket is used; outside, the newest"
+
+# 8. the client itself: exit codes
 HOTBAR_SOCKET=/nonexistent "$NATIVE" ping >/dev/null 2>&1 && fail "no socket should fail"
 HOTBAR_SOCKET=/nonexistent "$NATIVE" ping >/dev/null 2>&1 || (( $? == 111 )) || fail "no socket should exit 111"
 "$NATIVE" $'a\nb' >/dev/null 2>&1 || (( $? == 2 )) || fail "newline argument should exit 2"

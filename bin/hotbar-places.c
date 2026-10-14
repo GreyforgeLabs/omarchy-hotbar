@@ -14,6 +14,7 @@
 // runs a command. Build with `make native`.
 #define _GNU_SOURCE
 #include <dirent.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,16 +79,23 @@ static void unescape_octal(char *s) {
 }
 
 // udev escapes bytes in /dev/disk/by-* names as \xHH.
+static int hexval(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
 static void unescape_hex(char *s) {
     char *w = s;
     for (char *r = s; *r; r++) {
-        if (*r == '\\' && r[1] == 'x' && r[2] && r[3]) {
-            char hex[3] = { r[2], r[3], 0 };
-            char *end = NULL;
-            long v = strtol(hex, &end, 16);
-            if (end && !*end) { *w++ = (char) v; r += 3; continue; }
+        int hi, lo;
+        if (*r == '\\' && r[1] == 'x' && (hi = hexval(r[2])) >= 0 && (lo = hexval(r[3])) >= 0) {
+            *w++ = (char) (hi << 4 | lo);
+            r += 3;
+        } else {
+            *w++ = *r;
         }
-        *w++ = *r;
     }
     *w = 0;
 }
@@ -95,33 +103,38 @@ static void unescape_hex(char *s) {
 struct mount {
     char *target, *source, *fstype, *options, *fsroot;
     char *label, *partlabel;
-    char *canon;            // realpath of source, for label matching
     unsigned maj, min;      // the mount's device number from mountinfo
+    dev_t rdev;             // the source node's device number, if it is one
+    int has_rdev;
 };
 
-// One mountinfo line → mount (fields separated by single spaces; the
-// optional-fields block ends at " - ").
+// Next field of a mountinfo line. Fields are separated by exactly one space
+// (the kernel escapes spaces inside them), so an empty field — a mount whose
+// source is "" — stays a field instead of being merged away as strtok would.
+static char *field(char **cursor) {
+    char *start = *cursor;
+    if (!start) return NULL;
+    char *sp = strchr(start, ' ');
+    if (sp) { *sp = 0; *cursor = sp + 1; } else *cursor = NULL;
+    return start;
+}
+
+// One mountinfo line → mount. Fields: 0 id, 1 parent, 2 maj:min, 3 root,
+// 4 mount point, 5 vfs options, optional fields until "-", then fstype,
+// source, superblock options.
 static int parse_line(char *line, struct mount *m) {
     memset(m, 0, sizeof *m);
     line[strcspn(line, "\n")] = 0;
-    char *fields[5];
-    int n = 0;
-    char *save = NULL;
-    // fields: 0 id, 1 parent, 2 maj:min, 3 root, 4 mount point, 5 vfs options,
-    // then optional fields until "-", then fstype, source, superblock options.
-    while (n < 5) {
-        char *tok = strtok_r(n ? NULL : line, " ", &save);
-        if (!tok) return -1;
-        fields[n++] = tok;
-    }
-    char *vfsopts = strtok_r(NULL, " ", &save);
-    if (!vfsopts) return -1;
+    char *cursor = line;
+    char *fields[6];
+    for (int n = 0; n < 6; n++) if (!(fields[n] = field(&cursor))) return -1;
+    char *vfsopts = fields[5];
     char *tok;
-    while ((tok = strtok_r(NULL, " ", &save)) && strcmp(tok, "-") != 0) {}
+    while ((tok = field(&cursor)) && strcmp(tok, "-") != 0) {}
     if (!tok) return -1;
-    char *fstype = strtok_r(NULL, " ", &save);
-    char *source = strtok_r(NULL, " ", &save);
-    char *superopts = strtok_r(NULL, " ", &save);
+    char *fstype = field(&cursor);
+    char *source = field(&cursor);
+    char *superopts = field(&cursor);
     if (!fstype || !source) return -1;
     unescape_octal(fields[3]);
     unescape_octal(fields[4]);
@@ -131,6 +144,7 @@ static int parse_line(char *line, struct mount *m) {
     m->target = strdup(fields[4]);
     m->source = strdup(source);
     m->fstype = strdup(fstype);
+    if (!m->fsroot || !m->target || !m->source || !m->fstype) return -1;
     // findmnt's OPTIONS merges the vfs options with the superblock options,
     // dropping the duplicated rw/ro.
     size_t cap = strlen(vfsopts) + (superopts ? strlen(superopts) : 0) + 2;
@@ -150,13 +164,14 @@ static int parse_line(char *line, struct mount *m) {
 
 static void free_mount(struct mount *m) {
     free(m->target); free(m->source); free(m->fstype); free(m->options); free(m->fsroot);
-    free(m->label); free(m->partlabel); free(m->canon);
+    free(m->label); free(m->partlabel);
 }
 
 // /run/mount/utab carries the userspace options (x-gvfs-hide, x-systemd.*)
 // that never reach the kernel. Append them to the matching target.
 static void merge_utab(struct mount *mounts, size_t count) {
-    FILE *f = fopen("/run/mount/utab", "r");
+    const char *utab = getenv("HOTBAR_UTAB");
+    FILE *f = fopen(utab && *utab ? utab : "/run/mount/utab", "r");
     if (!f) return;
     char *line = NULL;
     size_t cap = 0;
@@ -183,45 +198,43 @@ static void merge_utab(struct mount *mounts, size_t count) {
     fclose(f);
 }
 
-// Labels come from the udev symlink farms. A mount matches a link when its
-// source resolves to the same device node, or when the link's device number
-// equals the mount's (mountinfo's maj:min) — the latter covers sources such
-// as /dev/root that exist as no path at all. btrfs reports an anonymous 0:N
-// device, so only real block numbers take part in that comparison.
+// Labels come from the udev symlink farms. A mount matches a link when the
+// link's device number equals the mount's (mountinfo's maj:min; this covers
+// sources such as /dev/root that exist as no path at all) or its source
+// node's (btrfs reports an anonymous 0:N device, so only real block numbers
+// take part in the first comparison). One fstatat per link: a device node
+// is identified by its number, so no path needs resolving.
 static void attach_labels(struct mount *mounts, size_t count, const char *dir, int part) {
     DIR *d = opendir(dir);
     if (!d) return;
     struct dirent *e;
     while ((e = readdir(d))) {
         if (e->d_name[0] == '.') continue;
-        char link[PATH_MAX];
-        if (snprintf(link, sizeof link, "%s/%s", dir, e->d_name) >= (int) sizeof link) continue;
-        char *dev = realpath(link, NULL);
         struct stat st;
-        int have_rdev = stat(link, &st) == 0 && S_ISBLK(st.st_mode);
-        if (!dev && !have_rdev) continue;
+        if (fstatat(dirfd(d), e->d_name, &st, 0) != 0 || !S_ISBLK(st.st_mode)) continue;
         for (size_t i = 0; i < count; i++) {
-            int by_path = dev && mounts[i].canon && strcmp(mounts[i].canon, dev) == 0;
-            int by_number = have_rdev && mounts[i].maj != 0 && major(st.st_rdev) == mounts[i].maj && minor(st.st_rdev) == mounts[i].min;
-            if (!by_path && !by_number) continue;
-            char *name = strdup(e->d_name);
-            if (!name) continue;
-            unescape_hex(name);
-            char **slot = part ? &mounts[i].partlabel : &mounts[i].label;
-            if (*slot) free(name); else *slot = name;
+            struct mount *m = &mounts[i];
+            int match = (m->maj != 0 && st.st_rdev == makedev(m->maj, m->min)) || (m->has_rdev && st.st_rdev == m->rdev);
+            char **slot = part ? &m->partlabel : &m->label;
+            if (!match || *slot) continue;
+            if ((*slot = strdup(e->d_name))) unescape_hex(*slot);
         }
-        free(dev);
     }
     closedir(d);
 }
 
 // libmount always resolves the kernel's "/dev/root" to the real node via
 // the device number (whether or not a /dev/root exists), and does the same
-// for any source that exists as no path; sysfs knows the node's name.
-static void canonical_source(struct mount *m) {
+// for any source that exists as no path; sysfs knows the node's name. A
+// source that is a block device records its number for label matching.
+static void resolve_source(struct mount *m) {
     struct stat st;
-    if (m->maj == 0 || m->source[0] != '/') return;
-    if (strcmp(m->source, "/dev/root") != 0 && stat(m->source, &st) == 0) return;
+    if (m->source[0] != '/') return;
+    if (strcmp(m->source, "/dev/root") != 0 && stat(m->source, &st) == 0) {
+        if (S_ISBLK(st.st_mode)) { m->rdev = st.st_rdev; m->has_rdev = 1; }
+        return;
+    }
+    if (m->maj == 0) return;
     char path[64];
     snprintf(path, sizeof path, "/sys/dev/block/%u:%u/uevent", m->maj, m->min);
     FILE *f = fopen(path, "r");
@@ -241,7 +254,10 @@ static void canonical_source(struct mount *m) {
 }
 
 static int emit_mounts(FILE *out) {
-    FILE *f = fopen("/proc/self/mountinfo", "r");
+    // HOTBAR_MOUNTINFO / HOTBAR_UTAB point the parser at fixture files (the
+    // offline tests use them); normally they are unset.
+    const char *mountinfo = getenv("HOTBAR_MOUNTINFO");
+    FILE *f = fopen(mountinfo && *mountinfo ? mountinfo : "/proc/self/mountinfo", "r");
     if (!f) { fputs("null", out); return -1; }
     struct mount *mounts = NULL;
     size_t count = 0, cap = 0;
@@ -257,8 +273,7 @@ static int emit_mounts(FILE *out) {
             if (!grown) { free_mount(&m); break; }
             mounts = grown;
         }
-        canonical_source(&m);
-        m.canon = m.source[0] == '/' ? realpath(m.source, NULL) : NULL;
+        resolve_source(&m);
         mounts[count++] = m;
     }
     free(line);
@@ -290,21 +305,29 @@ static int emit_mounts(FILE *out) {
 
 // `xdg-mime query default x-scheme-handler/trash` reads these files; a line
 // `x-scheme-handler/trash=<something>` in any of them means a handler exists.
+// The system mimeinfo.cache runs to tens of kilobytes, so each file is read
+// in one go and searched with memmem rather than line by line.
 static int file_has_trash_handler(const char *path) {
-    FILE *f = fopen(path, "r");
-    if (!f) return 0;
-    char *line = NULL;
-    size_t cap = 0;
-    int found = 0;
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    struct stat st;
+    char *buf = NULL;
+    size_t len = 0;
+    if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0 && st.st_size < (16 << 20) &&
+        (buf = malloc((size_t) st.st_size))) {
+        ssize_t n;
+        while (len < (size_t) st.st_size && (n = read(fd, buf + len, (size_t) st.st_size - len)) > 0) len += (size_t) n;
+    }
+    close(fd);
     static const char key[] = "x-scheme-handler/trash=";
-    while (!found && getline(&line, &cap, f) > 0) {
-        if (strncmp(line, key, sizeof key - 1) != 0) continue;
-        for (const char *p = line + sizeof key - 1; *p && *p != '\n'; p++) {
-            if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9')) { found = 1; break; }
+    int found = 0;
+    for (char *p = buf, *end = buf + len; !found && p && (p = memmem(p, (size_t) (end - p), key, sizeof key - 1)); p += sizeof key - 1) {
+        if (p != buf && p[-1] != '\n') continue;
+        for (const char *q = p + sizeof key - 1; q < end && *q != '\n'; q++) {
+            if ((*q >= 'A' && *q <= 'Z') || (*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9')) { found = 1; break; }
         }
     }
-    free(line);
-    fclose(f);
+    free(buf);
     return found;
 }
 

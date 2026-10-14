@@ -118,7 +118,9 @@ BarWidget {
     try { backupFile.setText(text) } catch (e) {}
   }
 
-  readonly property var pins: Model.normalizePins(setting("pins", []))
+  // Canonical against the desktop entries, so a pin stored in another case
+  // than its entry's id still owns that app's windows.
+  readonly property var pins: Model.canonicalPins(setting("pins", []), entryIndex)
   readonly property var overrideRules: Model.compileOverrides(setting("matches", []))
   readonly property int iconSize: clampInt(setting("iconSize", 18), 12, 24)
   readonly property int cellSpacing: clampInt(setting("spacing", 2), 0, 12)
@@ -528,7 +530,7 @@ BarWidget {
   function iconSourceFor(group) {
     if (!group) return ""
     var icon = String(group.icon || "")
-    if (icon.indexOf("/") === 0) return "file://" + icon
+    if (icon.indexOf("/") === 0) return Model.fileUrl(icon)
     if (icon.indexOf("file://") === 0 || icon.indexOf("image://") === 0) return icon
     var cacheKey = String(group.key || "") + "\u0001" + icon + "\u0001" + String(group.desktopId || "") + "\u0001" + String(group.name || "")
     var hit = iconCache[cacheKey]
@@ -1242,7 +1244,7 @@ BarWidget {
 
     function getSetting(key: string): string {
       var k = String(key || "")
-      if (!Model.SETTING_KEYS[k]) return "error: unknown setting: " + k
+      if (!Model.isSettingKey(k)) return "error: unknown setting: " + k
       var v = root.effectiveSettings ? root.effectiveSettings[k] : undefined
       return JSON.stringify(v === undefined ? null : v)
     }
@@ -1368,26 +1370,19 @@ BarWidget {
   })
 
   function claimSocket() { socketOwner = Registry.claimSocket(root) }
-
-  // The outgoing instance of a hot-reload may still own the socket when the
-  // new one first asks; keep asking until it is gone.
+  // The outgoing instance of a hot-reload may still own the socket when this
+  // one first asks; the registry calls back here when it lets go. The claim
+  // waits a beat so the outgoing server is fully gone (closing it removes
+  // the socket file) before this one binds the same path. One shot, no
+  // polling: an instance that never owns the socket stays idle.
+  function socketFreed() { socketHandover.restart() }
   Timer {
-    interval: 1000
-    repeat: true
-    running: ipc.enabled && !root.socketOwner && root.socketPath !== ""
-    onTriggered: root.claimSocket()
+    id: socketHandover
+    interval: 500
+    onTriggered: if (ipc.enabled && !root.socketOwner) root.claimSocket()
   }
 
-  function serveRequest(line) {
-    var parts = String(line).split("\x1f")
-    var method = parts.shift()
-    var arity = socketMethods[method]
-    if (arity === undefined || typeof ipc[method] !== "function") return "Function not found."
-    if (parts.length < arity) return "Too few arguments provided to function " + method
-    if (parts.length > arity) return "Too many arguments provided to function " + method
-    var result = ipc[method].apply(ipc, parts)
-    return result === undefined || result === null ? "" : String(result)
-  }
+  function serveRequest(line) { return Model.dispatchRequest(line, socketMethods, ipc) }
 
   SocketServer {
     id: nativeServer
@@ -1412,7 +1407,7 @@ BarWidget {
   // id / class of something that is running now; the last form is resolved
   // to whatever identity Hotbar gave that window.
   function resolveKey(key) {
-    var k = Model.normalizePins([key])[0]
+    var k = Model.canonicalPinKey(Model.normalizePins([key])[0], entryIndex)
     if (!k) return ""
     if (root.groupByKey(k)) return k
     var asClass = Model.CLASS_PREFIX + k.toLowerCase()

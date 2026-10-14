@@ -97,10 +97,15 @@ static int resolve_socket(const char *explicit, char *out, size_t cap) {
     if (runtime_dir(dir, sizeof dir) != 0) return -1;
     const char *session = getenv("HYPRLAND_INSTANCE_SIGNATURE");
     if (!session || !*session) session = getenv("WAYLAND_DISPLAY");
-    if (session && *session && !strchr(session, '/')) {
+    // Inside a session, only that session's widget is a valid target: when
+    // its socket is missing (shell restarting, native socket not served
+    // yet) the caller falls back to omarchy-shell rather than driving
+    // another session's widget (a nested test shell, a second login).
+    if (session && *session) {
+        if (strchr(session, '/')) return -1;
         if (snprintf(out, cap, "%s/" SOCKET_PREFIX "%s" SOCKET_SUFFIX, dir, session) >= (int) cap) return -1;
         struct stat st;
-        if (stat(out, &st) == 0 && S_ISSOCK(st.st_mode)) return 0;
+        return stat(out, &st) == 0 && S_ISSOCK(st.st_mode) ? 0 : -1;
     }
     return newest_socket(dir, out, cap);
 }

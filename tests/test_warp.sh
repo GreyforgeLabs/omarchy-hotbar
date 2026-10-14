@@ -12,6 +12,10 @@ pass() { PASS=$((PASS + 1)); echo "ok   $*"; }
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 HOTBAR_BIN="$REPO/bin/hotbar"
+# doctor talks to the widget; pin the mocked portable transport so a built
+# bin/hotbar-native can never reach a live widget socket from this test.
+export HOTBAR_NO_NATIVE=1
+export HOTBAR_SOCKET=/nonexistent/hotbar-test.sock
 
 setup_home() {
   HOME_TMP="$(mktemp -d)"
@@ -120,6 +124,19 @@ if ! ls "$HOME"/.config/hypr/looknfeel.lua.bak.* >/dev/null 2>&1; then
   fail "no backup file written"
 fi
 pass "warp off writes a timestamped backup"
+teardown_home
+
+# 4b. two applies in the same second keep both backups (the first one holds
+# the original file)
+setup_home
+mock_hyprctl true 0 0
+printf '#!/usr/bin/env bash\necho 1700000000\n' >"$MOCKBIN/date"; chmod +x "$MOCKBIN/date"
+printf '%s\n' "-- original" >"$HOME/.config/hypr/looknfeel.lua"
+"$HOTBAR_BIN" warp off >/dev/null || fail "warp off (same-second test) failed"
+"$HOTBAR_BIN" warp on >/dev/null || fail "warp on (same-second test) failed"
+(( $(find "$HOME/.config/hypr" -maxdepth 1 -name 'looknfeel.lua.bak.*' | wc -l) == 2 )) || fail "same-second backups collided: $(ls "$HOME/.config/hypr")"
+grep -qx -- "-- original" "$HOME/.config/hypr/looknfeel.lua.bak.1700000000" || fail "the first backup no longer holds the original"
+pass "backups made within one second never overwrite each other"
 teardown_home
 
 # 5. warp status exit codes: 0 disabled, 1 enabled, 2 unknown

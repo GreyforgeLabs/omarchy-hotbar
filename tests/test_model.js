@@ -141,12 +141,11 @@ test("overrides win and cannot carry commands", () => {
 
 // ----------------------------------------------------------------- MRU
 
-test("mru touch/remove/prune", () => {
+test("mru touch/prune", () => {
   let m = []
   m = M.touchMru(m, "a"); m = M.touchMru(m, "b"); m = M.touchMru(m, "a")
   assert.deepStrictEqual(m, ["a", "b"])
-  m = M.removeMru(m, "b"); assert.deepStrictEqual(m, ["a"])
-  m = M.touchMru(m, "c"); m = M.pruneMru(m, ["c"]); assert.deepStrictEqual(m, ["c"])
+  m = M.touchMru(m, "c"); m = M.pruneMru(m, ["c", "a"]); assert.deepStrictEqual(m, ["c", "a"])
 })
 
 test("orderByMru uses focusHistory for unknown windows", () => {
@@ -419,6 +418,77 @@ test("responsive disabled shows every pin", () => {
   // fallback with lastGood == pin count (what QML stores when responsive is
   // off) never truncates
   assert.strictEqual(M.fallbackVisibleCount(12, 12), 12)
+})
+
+// --------------------------------------------- untrusted keys (0.3.1)
+
+test("prototype names are ordinary unknown keys: pins, app ids, settings", () => {
+  // A pin or app id spelled like an Object.prototype member used to find
+  // that member: "constructor" pinned the Object function (and set
+  // Object.pinned), and an app id "toString" lost its window entirely.
+  const g = M.buildGroups([resolved({ address: "t1", appId: "toString" })], ["constructor", "hasOwnProperty"], [], INDEX, [])
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(Object, "pinned"), false)
+  assert.deepStrictEqual(g.pinned.map(x => [x.key, typeof x.windows, x.running]), [["constructor", "object", false], ["hasOwnProperty", "object", false]])
+  const tostr = M.resolveIdentity({ appId: "toString" }, INDEX, [], null)
+  assert.strictEqual(tostr.key, "class:tostring")
+  assert.deepStrictEqual(g.running.map(x => x.key), ["class:tostring"])
+  assert.strictEqual(g.groups.valueOf, undefined)
+  assert.strictEqual(M.isSettingKey("iconSize"), true)
+  assert.strictEqual(M.isSettingKey("constructor"), false)
+  assert.strictEqual(M.isSettingKey("__proto__"), false)
+  assert.strictEqual(M.validateSetting("toString", 1).ok, false)
+})
+
+test("a desktop-id pin in another case owns its app's windows", () => {
+  // Pinned as "org.gnome.nautilus", the entry is "org.gnome.Nautilus": the
+  // app used to show twice — an idle pin and a Running entry.
+  const windows = [resolved({ address: "n1", appId: "org.gnome.Nautilus" })]
+  const g = M.buildGroups(windows, ["org.gnome.nautilus"], [], INDEX, [])
+  assert.deepStrictEqual(g.pinned.map(x => [x.key, x.count]), [["org.gnome.Nautilus", 1]])
+  assert.strictEqual(g.running.length, 0)
+  assert.strictEqual(M.canonicalPinKey("org.gnome.nautilus", INDEX), "org.gnome.Nautilus")
+  assert.strictEqual(M.canonicalPinKey("class:Foot", INDEX), "class:Foot")
+  assert.strictEqual(M.canonicalPinKey("not-installed", INDEX), "not-installed")
+  assert.deepStrictEqual(M.canonicalPins(["org.gnome.nautilus", "org.gnome.Nautilus", "FOOT", "foot"], INDEX), ["org.gnome.Nautilus", "foot"])
+  assert.deepStrictEqual(M.canonicalPins(["a", "a|b"], null), ["a"])
+})
+
+test("mruRank shared across groups orders exactly like the list", () => {
+  const ws = [{ address: "x" }, { address: "y", focusHistory: 0 }, { address: "z" }]
+  const mru = ["z", "x"]
+  assert.deepStrictEqual(M.orderByMru(ws, M.mruRank(mru)).map(w => w.address), M.orderByMru(ws, mru).map(w => w.address))
+  assert.deepStrictEqual(M.orderByMru(ws, mru).map(w => w.address), ["z", "x", "y"])
+  assert.deepStrictEqual(M.orderByMru(ws, null).map(w => w.address), ["y", "x", "z"])
+})
+
+test("socket dispatch reaches only the declared methods, with qs arity rules", () => {
+  const calls = []
+  const target = {
+    ping() { return "ok" },
+    activate(k) { calls.push(k); return "ok" },
+    setSetting(k, v) { return k + "=" + v },
+    close() { calls.push("close") },
+    secret() { return "leak" }
+  }
+  const arities = { ping: 0, activate: 1, setSetting: 2, close: 0, missing: 0 }
+  assert.strictEqual(M.dispatchRequest("ping", arities, target), "ok")
+  assert.strictEqual(M.dispatchRequest("activate\x1fchromium", arities, target), "ok")
+  assert.deepStrictEqual(calls, ["chromium"])
+  assert.strictEqual(M.dispatchRequest("setSetting\x1ficonSize\x1f3230", arities, target), "iconSize=3230")
+  assert.strictEqual(M.dispatchRequest("close", arities, target), "")
+  assert.strictEqual(M.dispatchRequest("activate", arities, target), "Too few arguments provided to function activate")
+  assert.strictEqual(M.dispatchRequest("ping\x1fx", arities, target), "Too many arguments provided to function ping")
+  for (const name of ["secret", "missing", "toString", "constructor", "hasOwnProperty", "__proto__", "valueOf", ""]) {
+    assert.strictEqual(M.dispatchRequest(name, arities, target), "Function not found.", name)
+  }
+})
+
+test("absolute icon paths become file URLs that name exactly that file", () => {
+  assert.strictEqual(M.fileUrl("/usr/share/icons/app.png"), "file:///usr/share/icons/app.png")
+  assert.strictEqual(M.fileUrl("/home/ada/.local/share/applications/icons/My App #2 100%.png"),
+    "file:///home/ada/.local/share/applications/icons/My%20App%20%232%20100%25.png")
+  assert.strictEqual(decodeURIComponent(new URL(M.fileUrl("/a/b?c#d%e.png")).pathname), "/a/b?c#d%e.png")
+  assert.strictEqual(M.fileUrl("relative.png"), "")
 })
 
 console.log("HotbarModel: " + passed + " tests passed")

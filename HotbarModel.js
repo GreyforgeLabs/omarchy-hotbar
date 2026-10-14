@@ -36,6 +36,13 @@ function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
+// Lookup tables keyed by untrusted strings (desktop ids, classes, pin keys)
+// have no prototype: "constructor" or "toString" must miss like any other
+// unknown key instead of finding Object.prototype's members.
+function dict() { return Object.create(null) }
+
+function has(map, key) { return Object.prototype.hasOwnProperty.call(map, key) }
+
 // Human name for an identity that has no desktop entry. Reverse-DNS ids keep
 // their last segment ("org.gnome.Loupe" -> "Loupe"); everything else is shown
 // verbatim so a custom terminal class stays recognisable.
@@ -90,7 +97,7 @@ function execBasename(execString) {
 
 // entries: [{ id, name, icon, execString, startupClass, noDisplay }]
 function buildEntryIndex(entries) {
-  var index = { byId: {}, byIdLower: {}, byStartupClass: {}, byWebHost: {}, byExecBase: {}, byName: {}, count: 0 }
+  var index = { byId: dict(), byIdLower: dict(), byStartupClass: dict(), byWebHost: dict(), byExecBase: dict(), byName: dict(), count: 0 }
   var list = Array.isArray(entries) ? entries : []
   for (var i = 0; i < list.length; i++) {
     var entry = list[i]
@@ -319,12 +326,6 @@ function touchMru(list, address) {
   return out
 }
 
-function removeMru(list, address) {
-  var addr = str(address)
-  var src = Array.isArray(list) ? list : []
-  return src.filter(function(a) { return a !== addr })
-}
-
 // Drop addresses that no longer exist so the list cannot grow unbounded.
 function pruneMru(list, liveAddresses) {
   var live = {}
@@ -334,12 +335,19 @@ function pruneMru(list, liveAddresses) {
   return src.filter(function(a) { return live[a] === true })
 }
 
-// Sort windows by MRU rank; unknown addresses fall back to the compositor's
-// focusHistoryID (0 = most recent) and finally to their original order.
-function orderByMru(windows, mru) {
-  var rank = {}
+// address -> MRU position, built once per rebuild and shared by every group.
+function mruRank(mru) {
+  var rank = dict()
   var src = Array.isArray(mru) ? mru : []
   for (var i = 0; i < src.length; i++) rank[src[i]] = i
+  return rank
+}
+
+// Sort windows by MRU rank; unknown addresses fall back to the compositor's
+// focusHistoryID (0 = most recent) and finally to their original order.
+// `mru` is the MRU address list or a mruRank() of it.
+function orderByMru(windows, mru) {
+  var rank = Array.isArray(mru) || !mru ? mruRank(mru) : mru
   var list = (Array.isArray(windows) ? windows : []).map(function(w, idx) { return { w: w, idx: idx } })
   list.sort(function(a, b) {
     var ra = rank[a.w.address], rb = rank[b.w.address]
@@ -378,7 +386,7 @@ function clickTarget(ordered, activeAddress, direction) {
 // pins: ["chromium", "foot", "class:tui.float"]
 // index/overrides: for empty pinned groups
 function buildGroups(windows, pins, mru, index, overrides) {
-  var groups = {}
+  var groups = dict()
   var order = []
   var list = Array.isArray(windows) ? windows : []
   for (var i = 0; i < list.length; i++) {
@@ -405,7 +413,7 @@ function buildGroups(windows, pins, mru, index, overrides) {
     g.windows.push(w)
   }
 
-  var pinList = normalizePins(pins)
+  var pinList = canonicalPins(pins, index)
   for (var p = 0; p < pinList.length; p++) {
     var pk = pinList[p]
     if (!groups[pk]) {
@@ -420,9 +428,10 @@ function buildGroups(windows, pins, mru, index, overrides) {
     groups[pk].pinned = true
   }
 
+  var rank = mruRank(mru)
   for (var k in groups) {
     var grp = groups[k]
-    grp.windows = orderByMru(grp.windows, mru)
+    grp.windows = orderByMru(grp.windows, rank)
     grp.count = grp.windows.length
     grp.running = grp.count > 0
     grp.focused = false
@@ -467,6 +476,29 @@ function normalizePins(pins) {
     else key = stripDesktop(key)
     if (!isValidPinKey(key)) continue
     if (out.indexOf(key) === -1) out.push(key)
+  }
+  return out
+}
+
+// A desktop-id pin typed in another case ("org.gnome.nautilus") names the
+// entry the index knows as "org.gnome.Nautilus". Windows of that app group
+// under the exact id, so the pin must carry it too — otherwise the app
+// shows twice: an idle pin plus a Running entry.
+function canonicalPinKey(key, index) {
+  var k = str(key)
+  if (!k || k.indexOf(CLASS_PREFIX) === 0 || !index || !index.byId || has(index.byId, k)) return k
+  var info = index.byIdLower[lower(k)]
+  return info ? info.id : k
+}
+
+// normalizePins, then canonicalPinKey on each, deduplicated.
+function canonicalPins(pins, index) {
+  var list = normalizePins(pins)
+  if (!index) return list
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    var k = canonicalPinKey(list[i], index)
+    if (out.indexOf(k) === -1) out.push(k)
   }
   return out
 }
@@ -651,15 +683,7 @@ var SETTING_SPEC = {
   showMounts:       { type: "boolean", defaultValue: true }
 }
 
-// Legacy type map kept for IPC getSetting lookups.
-var SETTING_KEYS = {
-  pins: "array", matches: "array", favorites: "array",
-  iconSize: "integer", spacing: "integer", iconStyle: "string", runningIndicator: "string",
-  separators: "boolean", previews: "boolean", previewDelay: "integer", animations: "boolean", flame: "boolean", placesStyle: "string",
-  wheelCycle: "boolean", middleClick: "string", showPlaces: "boolean", showRunning: "boolean",
-  responsive: "boolean", showDesktop: "boolean", showDownloads: "boolean", showDocuments: "boolean",
-  showPictures: "boolean", showMusic: "boolean", showVideos: "boolean", showTrash: "boolean", showMounts: "boolean"
-}
+function isSettingKey(key) { return has(SETTING_SPEC, str(key)) }
 
 // Favorites stay path-only: objects carrying execution-oriented fields are
 // rejected outright, and configuration data is never executed.
@@ -715,8 +739,8 @@ function validatePins(value) {
 // { ok, value } or { ok: false, error }.
 function validateSetting(key, value) {
   var name = str(key)
+  if (!isSettingKey(name)) return { ok: false, error: "unknown setting: " + name }
   var spec = SETTING_SPEC[name]
-  if (!spec) return { ok: false, error: "unknown setting: " + name }
   if (spec.type === "pins") return validatePins(value)
   if (spec.type === "favorites") return validateFavorites(value)
   if (spec.type === "matches") return validateMatches(value)
@@ -736,6 +760,16 @@ function validateSetting(key, value) {
   return { ok: false, error: "unknown setting: " + name }
 }
 
+// file:// URL for an absolute icon path (Icon=/path/in/a/desktop/entry).
+// Each segment is percent-encoded: a raw "#", "?" or "%" in a file name
+// would otherwise be read as a fragment, a query or an escape, and the icon
+// would not load (or a different file would).
+function fileUrl(path) {
+  var p = str(path)
+  if (p.charAt(0) !== "/") return ""
+  return "file://" + p.split("/").map(encodeURIComponent).join("/")
+}
+
 // Location label for a window row: "Workspace 3 · DP-2".
 function windowLocation(win) {
   var w = win || {}
@@ -749,6 +783,22 @@ function windowLocation(win) {
   var mon = str(w.monitorName)
   if (wsLabel && mon) return wsLabel + " · " + mon
   return wsLabel || mon
+}
+
+// One request on the widget's native socket: method and arguments joined by
+// 0x1f. Only the methods named in `arities` (method -> argument count, the
+// count qs would demand) are reachable on `target`; inherited names such as
+// "constructor" or "toString" are refused like any unknown method. Replies
+// use qs's own refusal texts.
+function dispatchRequest(line, arities, target) {
+  var parts = str(line).split("\x1f")
+  var method = parts.shift()
+  if (!arities || !has(arities, method) || !target || typeof target[method] !== "function") return "Function not found."
+  var arity = arities[method]
+  if (parts.length < arity) return "Too few arguments provided to function " + method
+  if (parts.length > arity) return "Too many arguments provided to function " + method
+  var result = target[method].apply(target, parts)
+  return result === undefined || result === null ? "" : String(result)
 }
 
 if (typeof module !== "undefined") {
@@ -768,7 +818,6 @@ if (typeof module !== "undefined") {
     resolveIdentity: resolveIdentity,
     identityForKey: identityForKey,
     touchMru: touchMru,
-    removeMru: removeMru,
     pruneMru: pruneMru,
     orderByMru: orderByMru,
     clickTarget: clickTarget,
@@ -792,6 +841,11 @@ if (typeof module !== "undefined") {
     validateFavorites: validateFavorites,
     validateMatches: validateMatches,
     SETTING_SPEC: SETTING_SPEC,
-    SETTING_KEYS: SETTING_KEYS
+    isSettingKey: isSettingKey,
+    fileUrl: fileUrl,
+    canonicalPinKey: canonicalPinKey,
+    canonicalPins: canonicalPins,
+    mruRank: mruRank,
+    dispatchRequest: dispatchRequest
   }
 }

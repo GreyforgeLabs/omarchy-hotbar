@@ -91,5 +91,45 @@ test("PlacesModel builds identical sections from either helper", () => {
   assert.deepStrictEqual(P.buildPlaces(input(fast)), P.buildPlaces(input(shell)))
 })
 
+// Fixture mountinfo/utab (HOTBAR_MOUNTINFO / HOTBAR_UTAB): the kernel's
+// octal escapes, an empty source field, the vfs+superblock option merge,
+// utab options joined by escaped target, and pseudo filesystems dropped.
+// Device numbers are anonymous (0:N) and the sources do not exist, so no
+// host label can attach.
+const MOUNTINFO = [
+  "21 1 0:19 / /proc rw,nosuid,nodev,noexec,relatime shared:12 - proc proc rw",
+  "30 1 0:300 / / rw,relatime shared:1 - ext4 /dev/hbtest-root rw",
+  "40 30 0:301 / /run/media/ada/My\\040Disk rw,nosuid,nodev,relatime shared:200 - exfat /dev/hbtest-usb rw,uid=1000,iocharset=utf8",
+  "41 30 0:302 / /mnt/back\\134slash\\011tab rw,relatime - ext4 /dev/hbtest-b ro,errors=remount-ro",
+  "42 30 0:303 / /mnt/blank rw,relatime - fuse.mything  rw,user_id=1000",
+  "43 30 0:304 /sub /mnt/sub rw,relatime shared:5 master:1 - btrfs /dev/hbtest-c rw,subvol=/sub",
+  "44 30 0:305 / /mnt/hide rw - ext4 /dev/hbtest-d rw",
+  "45 30 0:306 / /mnt/truncated rw"
+].join("\n") + "\n"
+const UTAB = "ID=40 SRC=/dev/hbtest-usb TARGET=/run/media/ada/My\\040Disk ROOT=/ OPTS=x-udisks-auth\n" +
+  "ID=44 SRC=/dev/hbtest-d TARGET=/mnt/hide ROOT=/ OPTS=x-gvfs-hide\n"
+
+test("fixture mountinfo: escapes, empty source, option merge, utab", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hotbar-mountinfo-"))
+  fs.writeFileSync(path.join(dir, "mountinfo"), MOUNTINFO)
+  fs.writeFileSync(path.join(dir, "utab"), UTAB)
+  const env = Object.assign({}, process.env, { HOTBAR_MOUNTINFO: path.join(dir, "mountinfo"), HOTBAR_UTAB: path.join(dir, "utab") })
+  const out = JSON.parse(execFileSync(native, [], { encoding: "utf8", timeout: 5000, env }))
+  fs.rmSync(dir, { recursive: true, force: true })
+  const got = out.mounts.filesystems.map(m => [m.target, m.source, m.fstype, m.options, m.fsroot, m.label, m.partlabel])
+  assert.deepStrictEqual(got, [
+    ["/", "/dev/hbtest-root", "ext4", "rw,relatime", "/", null, null],
+    ["/run/media/ada/My Disk", "/dev/hbtest-usb", "exfat", "rw,nosuid,nodev,relatime,uid=1000,iocharset=utf8,x-udisks-auth", "/", null, null],
+    ["/mnt/back\\slash\ttab", "/dev/hbtest-b", "ext4", "rw,relatime,errors=remount-ro", "/", null, null],
+    ["/mnt/blank", "", "fuse.mything", "rw,relatime,user_id=1000", "/", null, null],
+    ["/mnt/sub", "/dev/hbtest-c", "btrfs", "rw,relatime,subvol=/sub", "/sub", null, null],
+    ["/mnt/hide", "/dev/hbtest-d", "ext4", "rw,x-gvfs-hide", "/", null, null]
+  ])
+  const drives = P.mountEntries(out.mounts, "/home/ada", {})
+  assert.deepStrictEqual(drives.map(d => d.name + " -> " + d.path), [
+    "back\\slash\ttab -> /mnt/back\\slash\ttab", "blank -> /mnt/blank", "My Disk -> /run/media/ada/My Disk", "sub -> /mnt/sub"
+  ])
+})
+
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log("PlacesNative: " + passed + " tests passed")

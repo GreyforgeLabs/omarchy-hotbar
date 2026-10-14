@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.3.1 — 2026-10-14
+
+Correctness and efficiency: the same widget, sharper edges. Nothing changes
+in how Hotbar looks or is driven.
+
+- **Pins typed in another case own their app.** A desktop-id pin stored as
+  `org.gnome.nautilus` for the entry `org.gnome.Nautilus` now groups that
+  app's windows under the pin instead of showing an idle pin plus a Running
+  entry. Pins are matched to their desktop entry's exact id, and
+  `hotbar pin` stores the canonical id.
+- **Untrusted keys are plain keys.** Every lookup table keyed by app ids,
+  classes or pin keys has no prototype, so a pin named `constructor` stays
+  an ordinary pin, a window whose app id is `toString` keeps its cell, and
+  `hotbar get constructor` reports an unknown setting. The widget socket
+  dispatches through one tested function that only reaches the declared
+  methods.
+- **Places shows the filesystem on top.** When two filesystems are mounted
+  on the same path, the Drives row now names the one whose files the path
+  shows (the later, over-mounting one).
+- **Native Places helper:** mountinfo fields are split exactly, so a mount
+  with an empty source keeps its source and superblock options; udev label
+  escapes are decoded only from real hex digits; labels attach by device
+  number with one `fstatat` per `/dev/disk` link instead of resolving every
+  path (`realpath` is gone); the trash-handler check reads each MIME file in
+  one go. In-process work per run dropped from about 330 µs to 240 µs on
+  the test machine. `HOTBAR_MOUNTINFO` / `HOTBAR_UTAB` point it at fixture files for
+  tests.
+- **Native client stays in its session.** With `HYPRLAND_INSTANCE_SIGNATURE`
+  or `WAYLAND_DISPLAY` set, `hotbar-native` only talks to that session's
+  widget socket; when it is missing the CLI uses `omarchy-shell` instead of
+  reaching another session's widget. Callers outside any session still use
+  the newest socket.
+- **No idle polling on multi-monitor desktops.** Bars that do not own the
+  native socket used to ask for it once a second, forever. They now wait to
+  be told when it is released.
+- **Fewer processes per CLI call.** Besides `hotbar-native`, `hotbar pins`
+  starts 1 process instead of 4 (no `dirname`, `tr`, `sed`) and
+  `hotbar activate`/`get` start 1 instead of 2.
+- **Faster rebuilds.** The MRU rank is computed once per rebuild instead of
+  once per app group: `buildGroups` for a 41-window desktop went from about
+  290 µs to 175 µs in QML's engine.
+- Absolute icon paths are percent-encoded into `file://` URLs, so a `#`, `?`
+  or `%` in an icon's file name no longer breaks it.
+- `hotbar warp off|on` twice within a second keeps both backups; the first
+  one (the file as the user left it) is never overwritten.
+- `make native` strips the helpers: 43.6 KB → 37.7 KB together.
+- Removed dead code: `SETTING_KEYS` (duplicated `SETTING_SPEC`),
+  `removeMru`, `flatRows`, the shell-side socket poll timer.
+- Tests: 118 → 133. New `tests/test_qml.sh` checks every QML file parses
+  and runs the models inside QML's own engine, headless (skipped without
+  Qt's `qml` runtime); fixture tests for the native Places parser; model
+  tests for prototype keys, mis-cased pins, socket dispatch and icon URLs;
+  registry tests for the socket handover; Places over-mount test; warp
+  same-second backups; native socket discovery. `tests/test_warp.sh` now
+  pins the mocked transport, so `doctor` can never reach a live widget.
+
 ## 0.3.0 — 2026-09-29
 
 The native release: the same widget, with its hot paths moved out of shell

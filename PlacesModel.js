@@ -17,7 +17,7 @@ var PSEUDO_FSTYPES = {
   bpf: true, securityfs: true, debugfs: true, tracefs: true, configfs: true, mqueue: true, hugetlbfs: true,
   fusectl: true, autofs: true, efivarfs: true, binfmt_misc: true, overlay: true, squashfs: true, ramfs: true,
   nsfs: true, rpc_pipefs: true, fuse: true, "fuse.portal": true, "fuse.gvfsd-fuse": true, "fuse.snapfuse": true,
-  "fuse.appimagelauncherfs": true, "fuse.rclone": false, "fuse.sshfs": false, "fuse.encfs": false
+  "fuse.appimagelauncherfs": true
 }
 
 function str(value) {
@@ -171,11 +171,7 @@ function isUserTarget(target) {
 
 function isRealFs(fstype) {
   var ft = str(fstype).toLowerCase()
-  if (!ft) return false
-  if (PSEUDO_FSTYPES[ft] === true) return false
-  if (PSEUDO_FSTYPES[ft] === false) return true
-  if (ft.indexOf("fuse.") === 0) return true
-  return true
+  return ft !== "" && PSEUDO_FSTYPES[ft] !== true
 }
 
 function mountLabel(fs) {
@@ -200,6 +196,10 @@ function mountGlyph(fs) {
 
 // findmntJson: parsed `findmnt -J --real` output (or null). home: the user's
 // home path. Returns the Drives section, deduplicated by (source, fsroot).
+// When several filesystems are mounted on one target, only the last — the
+// one on top, whose files the path actually shows — is considered: findmnt
+// lists an over-mount as a child of the mount it covers, mountinfo lists it
+// later, so both helpers put it after.
 function mountEntries(findmntJson, home, exists) {
   var list = []
   try {
@@ -211,14 +211,18 @@ function mountEntries(findmntJson, home, exists) {
   var h = normalizePath(home)
   var ex = exists || {}
   var out = []
-  var seenTarget = {}
-  var seenSource = {}
+  var seenSource = Object.create(null)
   var rootSource = ""
-  for (var r = 0; r < list.length; r++) if (normalizePath(list[r].target) === "/") rootSource = str(list[r].source).replace(/\[.*\]$/, "")
+  var top = Object.create(null)
+  for (var r = 0; r < list.length; r++) {
+    var t = normalizePath(list[r].target)
+    top[t] = r
+    if (t === "/") rootSource = str(list[r].source).replace(/\[.*\]$/, "")
+  }
   for (var i = 0; i < list.length; i++) {
     var fs = list[i]
     var target = normalizePath(fs.target)
-    if (!target || target.charAt(0) !== "/") continue
+    if (!target || target.charAt(0) !== "/" || top[target] !== i) continue
     if (!isRealFs(fs.fstype)) continue
     if (target === h) continue
     if (isSystemTarget(target) && !isUserTarget(target)) continue
@@ -232,11 +236,9 @@ function mountEntries(findmntJson, home, exists) {
     // Subvolumes of the root filesystem (btrfs @home, @log, @pkg…) are the
     // system disk, not a drive.
     if (baseSource && baseSource === rootSource && !isUserTarget(target)) continue
-    if (seenTarget[target]) continue
     var sourceKey = baseSource + "|" + fsroot
     if (baseSource && seenSource[sourceKey]) continue
     if (ex[target] === false) continue
-    seenTarget[target] = true
     if (baseSource) seenSource[sourceKey] = true
     out.push({
       id: "mount:" + target,
@@ -322,13 +324,6 @@ function candidatePaths(input) {
   return out
 }
 
-function flatRows(sections) {
-  var out = []
-  var list = Array.isArray(sections) ? sections : []
-  for (var i = 0; i < list.length; i++) for (var j = 0; j < list[i].rows.length; j++) out.push(list[i].rows[j])
-  return out
-}
-
 // argv to open a place with the registered handler. trash:/// goes through
 // gio (it understands the scheme); paths go through xdg-open.
 function openArgv(path) {
@@ -351,7 +346,6 @@ if (typeof module !== "undefined") {
     trashEntry: trashEntry,
     buildPlaces: buildPlaces,
     candidatePaths: candidatePaths,
-    flatRows: flatRows,
     openArgv: openArgv
   }
 }

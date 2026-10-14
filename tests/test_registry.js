@@ -78,4 +78,57 @@ test("after the owner releases, the next instance may claim", () => {
   assert.strictEqual(R.claimSocket(null), false)
 })
 
+test("a refused instance waits and is handed the socket on release, without polling", () => {
+  // Instances call claimSocket() from socketFreed(), as Hotbar.qml does.
+  const mk = (id) => { const o = { id, freed: 0 }; o.socketFreed = () => { o.freed++; R.claimSocket(o) }; return o }
+  const owner = mk("owner"), second = mk("second"), third = mk("third")
+  assert.strictEqual(R.claimSocket(owner), true)
+  assert.strictEqual(R.claimSocket(second), false)
+  assert.strictEqual(R.claimSocket(second), false) // asking twice queues once
+  assert.strictEqual(R.claimSocket(third), false)
+  R.releaseSocket(owner)
+  assert.strictEqual(R.socketOwnedBy(second), true)
+  assert.strictEqual(second.freed, 1)
+  assert.strictEqual(third.freed, 0)
+  R.releaseSocket(second)
+  assert.strictEqual(R.socketOwnedBy(third), true)
+  R.releaseSocket(third)
+  assert.strictEqual(R.socketOwnedBy(third), false)
+})
+
+test("a destroyed or failing waiter is skipped; a departed waiter is never called", () => {
+  const owner = { id: "o" }
+  const gone = { id: "gone", socketFreed() { throw new Error("destroyed") } }
+  const left = { id: "left", socketFreed() { throw new Error("must not be called") } }
+  const next = { id: "next" }; next.socketFreed = () => R.claimSocket(next)
+  R.claimSocket(owner); R.claimSocket(gone); R.claimSocket(left); R.claimSocket(next)
+  R.releaseSocket(left) // its Component.onDestruction runs releaseSocket too
+  R.releaseSocket(owner)
+  assert.strictEqual(R.socketOwnedBy(next), true)
+  R.releaseSocket(next)
+  const fresh = { id: "fresh" }
+  assert.strictEqual(R.claimSocket(fresh), true)
+  R.releaseSocket(fresh)
+})
+
+test("screen lookup ignores prototype names", () => {
+  assert.strictEqual(R.lookup("constructor"), null)
+  assert.strictEqual(R.lookup("__proto__"), null)
+})
+
+test("waiters that claim later (as Hotbar does) are all told; the first claim wins", () => {
+  const owner = { id: "o" }
+  const told = []
+  const a = { id: "a", socketFreed() { told.push("a") } }, b = { id: "b", socketFreed() { told.push("b") } }
+  R.claimSocket(owner); R.claimSocket(a); R.claimSocket(b)
+  R.releaseSocket(owner)
+  assert.deepStrictEqual(told, ["a", "b"])
+  assert.strictEqual(R.claimSocket(a), true)   // a's timer fires first
+  assert.strictEqual(R.claimSocket(b), false)  // b is refused and waits again
+  R.releaseSocket(a)
+  assert.deepStrictEqual(told, ["a", "b", "b"])
+  assert.strictEqual(R.claimSocket(b), true)
+  R.releaseSocket(b)
+})
+
 console.log("HotbarRegistry: " + passed + " tests passed")

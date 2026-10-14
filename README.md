@@ -147,7 +147,7 @@ That removes the CLI symlink it owns, the HOTBAR state mirror, and the plugin it
 ```bash
 make native                      # C client + C Places helper (optional fast path)
 make shaders                     # recompile components/shaders/*.frag (needs qt6-shadertools)
-bash tests/run.sh                # offline: models, lifecycle, retry, parity, native helpers
+bash tests/run.sh                # offline: models, lifecycle, retry, parity, native helpers, QML parse
 make bench                       # native vs portable latency/CPU against the live widget
 tests/live/acceptance.sh         # live shell: 41-window scenario, popovers, cycling
 ```

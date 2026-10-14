@@ -135,4 +135,21 @@ test("openArgv is argv-only and refuses non-paths", () => {
   assert.strictEqual(P.openArgv(""), null)
 })
 
+test("mounts: the filesystem on top of a stacked target is the one shown", () => {
+  // A drive auto-mounted over another one at the same path: the path shows
+  // the top filesystem, so its label wins (findmnt nests the over-mount as
+  // a child; mountinfo lists it later — both come after the covered one).
+  const stacked = { filesystems: [
+    { target: "/", source: "/dev/nvme0n1p2", fstype: "ext4", options: "rw", fsroot: "/", children: [
+      { target: "/mnt/usb", source: "/dev/sdb1", fstype: "ext4", label: "Under", options: "rw", fsroot: "/", children: [
+        { target: "/mnt/usb", source: "/dev/sdc1", fstype: "exfat", label: "On Top", options: "rw", fsroot: "/" }
+      ] },
+      { target: "/mnt/gone", source: "/dev/sdd1", fstype: "ext4", label: "Covered", options: "rw", fsroot: "/" },
+      { target: "/mnt/gone", source: "/dev/sdd2", fstype: "ext4", label: "Hidden top", options: "rw,x-gvfs-hide", fsroot: "/" }
+    ] }
+  ] }
+  const rows = P.mountEntries(stacked, HOME, {})
+  assert.deepStrictEqual(rows.map(r => r.name + " " + r.path), ["On Top /mnt/usb"])
+})
+
 console.log("PlacesModel: " + passed + " tests passed")
