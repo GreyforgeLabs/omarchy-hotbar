@@ -49,15 +49,19 @@ in how Hotbar looks or is driven.
 - `hotbar warp off|on` twice within a second keeps both backups; the first
   one (the file as the user left it) is never overwritten.
 - `make native` strips the helpers: 43.6 KB → 37.7 KB together.
+- Clean shell log: unplugging a monitor no longer logs a `TypeError` from
+  the departing bar's Hotbar, and a desktop without
+  `~/.config/user-dirs.dirs` no longer logs a read warning at startup.
 - Removed dead code: `SETTING_KEYS` (duplicated `SETTING_SPEC`),
   `removeMru`, `flatRows`, the shell-side socket poll timer.
-- Tests: 118 → 133. New `tests/test_qml.sh` checks every QML file parses
+- Tests: 118 → 135. New `tests/test_qml.sh` checks every QML file parses
   and runs the models inside QML's own engine, headless (skipped without
   Qt's `qml` runtime); fixture tests for the native Places parser; model
   tests for prototype keys, mis-cased pins, socket dispatch and icon URLs;
   registry tests for the socket handover; Places over-mount test; warp
   same-second backups; native socket discovery. `tests/test_warp.sh` now
-  pins the mocked transport, so `doctor` can never reach a live widget.
+  pins the mocked transport, so `doctor` can never reach a live widget;
+  source guards keep the two log fixes above in place.
 
 ## 0.3.0 — 2026-09-29
 

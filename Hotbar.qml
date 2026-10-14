@@ -572,6 +572,8 @@ BarWidget {
   FileView {
     id: userDirsFile
     path: root.home + "/.config/user-dirs.dirs"
+    // Optional (xdg-user-dirs may not be installed): onLoadFailed covers it.
+    printErrors: false
     watchChanges: true
     onLoaded: root.userDirs = Places.parseUserDirs(text(), root.home)
     onLoadFailed: root.userDirs = ({})
@@ -929,11 +931,13 @@ BarWidget {
     }
   }
 
+  // When a screen goes away, its bar can still emit these after this
+  // widget's context is gone (root is null by then).
   Connections {
     target: root.bar
     ignoreUnknownSignals: true
-    function onLayoutConfigChanged() { root.resetLayoutProbe() }
-    function onPositionChanged() { root.resetLayoutProbe() }
+    function onLayoutConfigChanged() { if (root) root.resetLayoutProbe() }
+    function onPositionChanged() { if (root) root.resetLayoutProbe() }
   }
 
   // The ModuleSlot the bar wrapped us in: the nearest ancestor that carries

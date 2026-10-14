@@ -131,4 +131,23 @@ test("waiters that claim later (as Hotbar does) are all told; the first claim wi
   R.releaseSocket(b)
 })
 
+// Hotbar.qml lifecycle guards, checked in its source (the widget itself
+// only loads inside the shell; the nested-rig run is the live check).
+const hotbarQml = fs.readFileSync(path.join(__dirname, "..", "Hotbar.qml"), "utf8")
+
+test("bar signals after a screen is removed never call into the destroyed widget", () => {
+  const block = hotbarQml.match(/Connections \{\s*target: root\.bar\b[\s\S]*?\n  \}/)
+  assert.ok(block, "Connections on root.bar not found")
+  const handlers = block[0].match(/function on\w+\(\)\s*\{[^}]*\}/g) || []
+  assert.ok(handlers.length >= 2, "expected the layout and position handlers")
+  for (const h of handlers) assert.ok(/\{\s*if \(root\) root\./.test(h), "unguarded handler: " + h)
+})
+
+test("a missing ~/.config/user-dirs.dirs is not logged as an error", () => {
+  const fv = hotbarQml.match(/FileView \{\s*id: userDirsFile[\s\S]*?\n  \}/)
+  assert.ok(fv, "userDirsFile FileView not found")
+  assert.ok(/printErrors: false/.test(fv[0]), "userDirsFile must set printErrors: false")
+  assert.ok(/onLoadFailed:/.test(fv[0]), "userDirsFile must still handle a failed load")
+})
+
 console.log("HotbarRegistry: " + passed + " tests passed")
