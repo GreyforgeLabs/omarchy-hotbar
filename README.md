@@ -83,6 +83,8 @@ hotbar unpin chromium
 
 Pinned slots are addressable for key bindings — `hotbar activate 1` opens slot 1, so you can bind Super+1..9 in your Hyprland config. With the native fast path built (below), bind `hotbar-native activateIndex 1` from the plugin's `bin/` directory instead: it reaches the widget in well under a millisecond.
 
+Every command that takes an app (`pin`, `unpin`, `activate`, `new`, `open`) accepts a desktop id in any case (`org.gnome.nautilus`), an identity key (`class:tui.float`), or the app id or class of a running window (`tui.float`). A refused call, such as an unknown app or screen, an empty pin slot or an invalid setting, prints the reason and exits 1, so scripts can tell. `hotbar screens` lists the monitor names that `--screen` accepts.
+
 ## Native fast path
 
 Hotbar's hot paths are available in C, behind the same commands:

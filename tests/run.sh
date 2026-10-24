@@ -13,12 +13,14 @@ bash tests/test_lifecycle.sh
 bash tests/test_retry.sh
 bash tests/test_warp.sh
 bash tests/test_native_cli.sh
+bash tests/test_cli_replies.sh
 bash tests/test_qml.sh
 bash -n bin/hotbar
 bash -n bin/hotbar-places
 bash -n tests/test_warp.sh
 bash -n tests/test_native_cli.sh
 bash -n tests/test_qml.sh
+bash -n tests/test_cli_replies.sh
 if command -v omarchy >/dev/null 2>&1; then
   omarchy plugin validate .
 fi

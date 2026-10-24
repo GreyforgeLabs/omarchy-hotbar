@@ -28,10 +28,15 @@ Windows
                          Add --screen <name> to target another monitor's bar.
   close [--screen <name>]
                          Close any open Hotbar popover.
+  screens                List the monitors that have a Hotbar, one per line.
   activate <app>         Launch / focus / cycle like a left click.
   activate <n>           Same for pinned slot n (1-based) — bind it to Super+n.
   new <app>              Open a new window like a middle click.
   identify               Show how every window was identified (for `matches`).
+
+  <app> accepts a desktop id in any case, an identity key, or the app id /
+  class of a running window. A refused call (unknown app or screen, no such
+  pin slot, invalid setting) prints the reason and exits 1.
 
 Setup
   install                Enable the widget, place it after the Omarchy menu,
@@ -81,6 +86,21 @@ ipc() {
     hotbar_preflight_portable || return $?
   fi
   omarchy-shell hotbar "$@"
+}
+
+# A call whose reply reports a refusal exits 1, so scripts and key bindings
+# can tell: "error: …" (invalid value, could not persist), "unknown …" (no
+# such app or screen) and "no pin N". The reply is printed either way.
+# Idempotent answers ("already pinned", "not pinned") stay successes.
+ipc_checked() {
+  local reply="" rc=0
+  reply="$(ipc "$@")" || rc=$?
+  [[ -n "$reply" ]] && printf '%s\n' "$reply"
+  (( rc == 0 )) || return $rc
+  case "$reply" in
+    "error:"*|unknown|"unknown "*|"no pin "*) return 1 ;;
+  esac
+  return 0
 }
 
 # Before every HOTBAR IPC command. With the native client, nothing to do: the
@@ -430,10 +450,10 @@ if (( $# > 0 )); then shift; fi
 case "$cmd" in
   pin)
     [[ -n "${1:-}" ]] || { echo "hotbar pin <app>" >&2; exit 1; }
-    need_shell; ipc pin "$1" ;;
+    need_shell; ipc_checked pin "$1" ;;
   unpin)
     [[ -n "${1:-}" ]] || { echo "hotbar unpin <app>" >&2; exit 1; }
-    need_shell; ipc unpin "$1" ;;
+    need_shell; ipc_checked unpin "$1" ;;
   pins)
     need_shell
     case "${1:-}" in
@@ -445,8 +465,8 @@ case "$cmd" in
           [[ "$a" == *"|"* ]] && { echo "hotbar: '|' is not allowed in a key" >&2; exit 1; }
           joined+="${joined:+|}$a"
         done
-        ipc setPins "$joined" ;;
-      clear) ipc setPins "" ;;
+        ipc_checked setPins "$joined" ;;
+      clear) ipc_checked setPins "" ;;
       "")
         # One key per line, split in the shell (no tr/sed processes).
         reply="$(ipc pins)"
@@ -455,20 +475,43 @@ case "$cmd" in
         exit 0 ;;
       *) echo "hotbar pins [set <app>...|clear]" >&2; exit 1 ;;
     esac ;;
-  open)
-    [[ -n "${1:-}" ]] || { echo "hotbar open places|running|settings|<app> [--screen <name>]" >&2; exit 1; }
+  open|close)
+    which="" screen=""
+    while (( $# )); do
+      case "$1" in
+        --screen)
+          [[ -n "${2:-}" ]] || { echo "hotbar $cmd: --screen needs a monitor name (see: hotbar screens)" >&2; exit 1; }
+          screen="$2"; shift 2 ;;
+        --screen=*)
+          screen="${1#--screen=}"
+          [[ -n "$screen" ]] || { echo "hotbar $cmd: --screen needs a monitor name (see: hotbar screens)" >&2; exit 1; }
+          shift ;;
+        *)
+          [[ "$cmd" == open && -z "$which" ]] || { echo "hotbar $cmd: unexpected argument '$1'" >&2; exit 1; }
+          which="$1"; shift ;;
+      esac
+    done
+    if [[ "$cmd" == open ]]; then
+      [[ -n "$which" ]] || { echo "hotbar open places|running|settings|<app> [--screen <name>]" >&2; exit 1; }
+      need_shell
+      if [[ -n "$screen" ]]; then ipc_checked openOn "$screen" "$which"; else ipc_checked open "$which"; fi
+    else
+      need_shell
+      if [[ -n "$screen" ]]; then ipc_checked closeOn "$screen"; else ipc close; fi
+    fi ;;
+  screens)
     need_shell
-    if [[ "${2:-}" == --screen && -n "${3:-}" ]]; then ipc openOn "$3" "$1"; else ipc open "$1"; fi ;;
-  close)
-    need_shell
-    if [[ "${1:-}" == --screen && -n "${2:-}" ]]; then ipc closeOn "$2"; else ipc close; fi ;;
+    reply="$(ipc screens)"
+    IFS='|' read -ra names <<<"$reply"
+    for n in "${names[@]}"; do [[ -n "$n" ]] && printf '%s\n' "$n"; done
+    exit 0 ;;
   activate)
     [[ -n "${1:-}" ]] || { echo "hotbar activate <app|n>" >&2; exit 1; }
     need_shell
-    if [[ "$1" =~ ^[0-9]+$ ]]; then ipc activateIndex "$1"; else ipc activate "$1"; fi ;;
+    if [[ "$1" =~ ^[0-9]+$ ]]; then ipc_checked activateIndex "$1"; else ipc_checked activate "$1"; fi ;;
   new)
     [[ -n "${1:-}" ]] || { echo "hotbar new <app>" >&2; exit 1; }
-    need_shell; ipc newWindow "$1" ;;
+    need_shell; ipc_checked newWindow "$1" ;;
   identify)
     need_shell
     ipc identify | jq -r '.[] | [.appId, .class, "->", .key, "(" + .source + ")"] | @tsv' | column -t ;;
@@ -479,10 +522,10 @@ case "$cmd" in
     key="$1"; value="$2"
     # JSON when it parses as JSON, otherwise a plain string.
     if json=$(jq -cn --argjson v "$value" '$v' 2>/dev/null); then :; else json=$(jq -cn --arg v "$value" '$v'); fi
-    ipc setSetting "$key" "$(printf '%s' "$json" | od -An -v -tx1 | tr -d ' \n')" ;;
+    ipc_checked setSetting "$key" "$(printf '%s' "$json" | od -An -v -tx1 | tr -d ' \n')" ;;
   get)
     [[ -n "${1:-}" ]] || { echo "hotbar get <key>" >&2; exit 1; }
-    need_shell; ipc getSetting "$1" ;;
+    need_shell; ipc_checked getSetting "$1" ;;
   install)
     omarchy-shell shell setPluginEnabled "$PLUGIN_ID" true >/dev/null
     sleep 1
@@ -506,7 +549,7 @@ case "$cmd" in
     if [[ "${2:-}" == "--apply" ]]; then
       need_shell
       joined=""; for k in "${keys[@]}"; do joined+="${joined:+|}$k"; done
-      ipc setPins "$joined"
+      ipc_checked setPins "$joined"
       echo "Applied. OmaPanel itself was not touched; remove it with: omarchy plugin remove atagulalan.omapanel"
     else
       echo "Dry run. Re-run with --apply to write these pins."
