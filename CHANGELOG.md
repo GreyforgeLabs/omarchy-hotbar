@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- **Every command that takes an app finds it the same way.** `activate`,
+  `open <app>` and the `cycle` IPC method now accept what `pin`, `unpin`
+  and `new` already did: a desktop id in any case
+  (`hotbar activate org.gnome.nautilus`), an identity key, or the app id or
+  class of a running window (`hotbar activate tui.float`). They used to
+  answer `unknown` for anything but the exact group key. The resolution is
+  one tested model function, `resolveKey`.
+- **Refused CLI calls exit 1.** An unknown app or screen, an empty pin slot
+  (`hotbar activate 7`) or an invalid setting (`hotbar set iconSize 99`)
+  prints the reason as before and now exits 1 instead of 0. "already
+  pinned" and "not pinned" stay successes.
+- **`--screen` is never ignored.** `hotbar open --screen DP-2 places` works
+  with the flag first (it used to send `--screen` as the popover name),
+  `--screen=DP-2` works, and a `--screen` without a name is an error
+  instead of acting on the current bar. New `hotbar screens` lists the
+  monitor names `--screen` accepts.
+- Tests: 135 → 148 (new `tests/test_cli_replies.sh`, `resolveKey` model and
+  V4 checks, and a source check that every app-taking IPC method resolves
+  its argument).
+
 ## 0.3.1 — 2026-10-14
 
 Correctness and efficiency: the same widget, sharper edges. Nothing changes
