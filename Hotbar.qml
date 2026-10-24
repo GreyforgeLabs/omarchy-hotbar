@@ -267,6 +267,9 @@ BarWidget {
       address: String(toplevel.address || ""),
       toplevel: toplevel,
       identity: identityFor(toplevel),
+      // What `hotbar activate|pin|new <app id or class>` matches (resolveKey).
+      appId: toplevel.wayland ? String(toplevel.wayland.appId || "") : "",
+      cls: String(ipc["class"] || ""),
       title: String(toplevel.title || ""),
       activated: String(toplevel.address || "") === activeAddress,
       urgent: toplevel.urgent === true,
@@ -794,9 +797,9 @@ BarWidget {
     if (w === "places") { openPlacesPopover(placesCellLoader.item || root); return "ok" }
     if (w === "running") { openRunningPopover(runningCellLoader.item || root); return "ok" }
     if (w === "settings") { openSettingsPopover(popoverAnchor || placesCellLoader.item || root); return "ok" }
-    var g = groupByKey(w)
+    var g = groupByKey(resolveKey(w))
     if (!g) return "unknown"
-    openAppPopover(g, cellFor(w) || root)
+    openAppPopover(g, cellFor(g.key) || root)
     return "ok"
   }
 
@@ -1276,7 +1279,7 @@ BarWidget {
     function screens(): string { return Registry.screens().join("|") }
 
     function activate(key: string): string {
-      var g = root.groupByKey(String(key || ""))
+      var g = root.groupByKey(root.resolveKey(key))
       if (!g) return "unknown"
       root.activateGroup(g)
       return "ok"
@@ -1299,7 +1302,7 @@ BarWidget {
     }
 
     function cycle(key: string): string {
-      var g = root.groupByKey(String(key || ""))
+      var g = root.groupByKey(root.resolveKey(key))
       if (!g) return "unknown"
       var order = g.windows.map(function(w) { return w.address }).join(",")
       return "ok " + root.cycleGroup(g, 1) + " from " + root.activeAddress + " order " + order
@@ -1407,26 +1410,12 @@ BarWidget {
     }
   }
 
-  // A key can be a desktop id, an identity key ("class:foo"), or the app
-  // id / class of something that is running now; the last form is resolved
-  // to whatever identity Hotbar gave that window.
+  // A key can be a desktop id (in any case), an identity key ("class:foo"),
+  // or the app id / class of something that is running now; the last form
+  // is resolved to whatever identity Hotbar gave that window. Every IPC
+  // method that takes an app goes through here.
   function resolveKey(key) {
-    var k = Model.canonicalPinKey(Model.normalizePins([key])[0], entryIndex)
-    if (!k) return ""
-    if (root.groupByKey(k)) return k
-    var asClass = Model.CLASS_PREFIX + k.toLowerCase()
-    if (root.groupByKey(asClass)) return asClass
-    if (root.entryFor(k)) return k
-    var values = Hyprland.toplevels.values || []
-    for (var i = 0; i < values.length; i++) {
-      var tl = values[i]
-      var ipc = tl && tl.lastIpcObject ? tl.lastIpcObject : {}
-      var appId = tl && tl.wayland ? String(tl.wayland.appId || "") : ""
-      if (appId.toLowerCase() === k.toLowerCase() || String(ipc["class"] || "").toLowerCase() === k.toLowerCase()) {
-        return root.identityFor(tl).key
-      }
-    }
-    return k
+    return Model.resolveKey(key, entryIndex, groups, function(k) { return !!root.entryFor(k) })
   }
 
   // Bar-window coordinates of every surface cell — for tests that need to

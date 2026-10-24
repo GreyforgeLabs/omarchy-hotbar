@@ -491,4 +491,46 @@ test("absolute icon paths become file URLs that name exactly that file", () => {
   assert.strictEqual(M.fileUrl("relative.png"), "")
 })
 
+test("an app argument resolves to its group however it is spelled", () => {
+  const nautilus = M.resolveIdentity({ appId: "org.gnome.Nautilus" }, INDEX, [], null)
+  const tui = M.resolveIdentity({ appId: "TUI.float" }, INDEX, [], null)
+  const alacritty = M.resolveIdentity({ appId: "Alacritty", cls: "Alacritty" }, INDEX, [], null)
+  const built = M.buildGroups([
+    win({ address: "n1", appId: "org.gnome.Nautilus", identity: nautilus }),
+    win({ address: "t1", appId: "TUI.float", identity: tui }),
+    win({ address: "a1", appId: "Alacritty", cls: "Alacritty", identity: alacritty })
+  ], ["org.gnome.nautilus"], [], INDEX, [])
+  const g = built.groups
+  // Desktop ids in any case, identity keys, and app ids / classes of windows.
+  assert.strictEqual(M.resolveKey("org.gnome.nautilus", INDEX, g), "org.gnome.Nautilus")
+  assert.strictEqual(M.resolveKey("org.gnome.Nautilus.desktop", INDEX, g), "org.gnome.Nautilus")
+  assert.strictEqual(M.resolveKey("class:tui.float", INDEX, g), "class:tui.float")
+  assert.strictEqual(M.resolveKey("tui.float", INDEX, g), "class:tui.float")
+  assert.strictEqual(M.resolveKey("TUI.float", INDEX, g), "class:tui.float")
+  assert.strictEqual(M.resolveKey(" alacritty ", INDEX, g), "class:alacritty")
+  // Not running: an installed entry keeps its canonical id; anything else
+  // comes back as typed (pin stores it, activate reports it unknown).
+  assert.strictEqual(M.resolveKey("FOOT", INDEX, g), "foot")
+  assert.strictEqual(M.resolveKey("not-installed", INDEX, g), "not-installed")
+  assert.strictEqual(M.resolveKey("discord", INDEX, g, () => false), "discord")
+  assert.strictEqual(M.resolveKey("", INDEX, g), "")
+  assert.strictEqual(M.resolveKey("a|b", INDEX, g), "")
+  // Untrusted names stay plain keys.
+  assert.strictEqual(M.resolveKey("constructor", INDEX, g), "constructor")
+  assert.strictEqual(M.resolveKey("toString", null, null), "toString")
+})
+
+test("every IPC method that takes an app resolves it the same way", () => {
+  const fs = require("fs")
+  const qml = fs.readFileSync(path.join(__dirname, "..", "Hotbar.qml"), "utf8")
+  for (const fn of ["pin", "unpin", "activate", "newWindow", "cycle"]) {
+    const body = qml.match(new RegExp("function " + fn + "\\(key: string\\): string \\{[\\s\\S]*?\\n    \\}"))
+    assert.ok(body, "IPC " + fn + " not found")
+    assert.ok(/root\.resolveKey\(key\)/.test(body[0]), "IPC " + fn + " must use resolveKey")
+  }
+  const open = qml.match(/function openByName\(which\) \{[\s\S]*?\n  \}/)
+  assert.ok(open && /groupByKey\(resolveKey\(w\)\)/.test(open[0]), "openByName must use resolveKey")
+  assert.ok(/appId: toplevel\.wayland/.test(qml) && /cls: String\(ipc\["class"\]/.test(qml), "window snapshots must carry appId and cls")
+})
+
 console.log("HotbarModel: " + passed + " tests passed")

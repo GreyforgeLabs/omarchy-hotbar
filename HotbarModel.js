@@ -503,6 +503,33 @@ function canonicalPins(pins, index) {
   return out
 }
 
+// The group key a CLI/IPC argument names. The argument can be a desktop id
+// in any case ("org.gnome.nautilus"), an identity key ("class:tui.float"),
+// or the app id / class of a running window ("tui.float", "Alacritty").
+// Returns, in order: the canonical key when a group has it, its "class:"
+// form when that is a group, the canonical key when a desktop entry has it
+// (`hasEntry`, default: the index), the group of a window whose app id or
+// class matches, and otherwise the canonical key itself. "" for no key.
+// groups: buildGroups().groups, whose windows carry `appId` and `cls`.
+function resolveKey(key, index, groups, hasEntry) {
+  var k = canonicalPinKey(normalizePins([key])[0], index)
+  if (!k) return ""
+  var g = groups || dict()
+  if (has(g, k)) return k
+  var asClass = CLASS_PREFIX + k.toLowerCase()
+  if (has(g, asClass)) return asClass
+  var known = typeof hasEntry === "function" ? hasEntry(k) : !!(index && index.byId && has(index.byId, k))
+  if (known) return k
+  var kl = k.toLowerCase()
+  for (var gk in g) {
+    var wins = g[gk] && Array.isArray(g[gk].windows) ? g[gk].windows : []
+    for (var i = 0; i < wins.length; i++) {
+      if (lower(wins[i].appId) === kl || lower(wins[i].cls) === kl) return gk
+    }
+  }
+  return k
+}
+
 function togglePin(pins, key) {
   var list = normalizePins(pins)
   var k = normalizePins([key])[0]
@@ -845,6 +872,7 @@ if (typeof module !== "undefined") {
     fileUrl: fileUrl,
     canonicalPinKey: canonicalPinKey,
     canonicalPins: canonicalPins,
+    resolveKey: resolveKey,
     mruRank: mruRank,
     dispatchRequest: dispatchRequest
   }

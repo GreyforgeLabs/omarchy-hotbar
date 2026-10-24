@@ -27,6 +27,8 @@ QtObject {
     check("prototype pin stays a plain pin", built.pinned[0].key === "constructor" && built.pinned[0].windows.length === 0 && Object.pinned === undefined)
     check("mis-cased pin owns the window", built.pinned[1].key === "org.gnome.Nautilus" && built.pinned[1].count === 1 && built.running.length === 0)
     check("prototype-free groups survive a property var", Object.keys(root.groups).length === 2 && root.groups["toString"] === undefined && root.groups["org.gnome.Nautilus"].count === 1)
+    check("app arguments resolve through a property var", M.resolveKey("org.gnome.nautilus", index, root.groups) === "org.gnome.Nautilus"
+      && M.resolveKey("toString", index, root.groups) === "toString")
     check("app id toString keeps its window", M.resolveIdentity({ appId: "toString" }, index, [], null).key === "class:tostring")
     var target = { ping: function() { return "ok" } }
     check("dispatch answers a declared method", M.dispatchRequest("ping", { ping: 0 }, target) === "ok")
