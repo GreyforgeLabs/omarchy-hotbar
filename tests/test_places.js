@@ -27,8 +27,8 @@ const MOUNTS = { filesystems: [
   { target: "/", source: "/dev/mapper/root[/@]", fstype: "btrfs", label: "OMARCHY", partlabel: null, options: "rw", fsroot: "/@", children: [
     { target: "/home", source: "/dev/mapper/root[/@home]", fstype: "btrfs", label: "OMARCHY", options: "rw", fsroot: "/@home", children: [
       { target: "/home/ada/.cache/x", source: "/dev/nvme1n1p3[/x]", fstype: "ext4", label: null, options: "rw", fsroot: "/x" },
-      { target: "/home/greyforge", source: "/dev/nvme1n1p3[/greyforge]", fstype: "ext4", label: null, options: "rw", fsroot: "/greyforge", children: [
-        { target: "/home/greyforge/.openclaw", source: "/dev/nvme1n1p3[/greyforge/.openclaw]", fstype: "ext4", options: "ro", fsroot: "/greyforge/.openclaw" }
+      { target: "/home/shared", source: "/dev/nvme1n1p3[/shared]", fstype: "ext4", label: null, options: "rw", fsroot: "/shared", children: [
+        { target: "/home/shared/.cache", source: "/dev/nvme1n1p3[/shared/.cache]", fstype: "ext4", options: "ro", fsroot: "/shared/.cache" }
       ] }
     ] },
     { target: "/var/cache/pacman/pkg", source: "/dev/mapper/root[/@pkg]", fstype: "btrfs", label: "OMARCHY", options: "rw", fsroot: "/@pkg" },
@@ -83,7 +83,7 @@ test("favorites: expansion, dedupe, no commands, missing dropped", () => {
 test("mounts: pseudo, system, subvolumes, hidden, duplicates excluded; labels preferred", () => {
   const rows = P.mountEntries(MOUNTS, HOME, {})
   const names = rows.map(r => r.name)
-  assert.deepStrictEqual(names, ["greyforge", "greyforge-data", "nas", "OMARCHY_202609", "Ubuntu", "win"])
+  assert.deepStrictEqual(names, ["greyforge-data", "nas", "OMARCHY_202609", "shared", "Ubuntu", "win"])
   assert.ok(!rows.some(r => r.path === "/" || r.path === "/home" || r.path === "/boot" || r.path === "/tmp"))
   assert.ok(!rows.some(r => r.path.indexOf("/.") !== -1))
   assert.strictEqual(rows.filter(r => r.path === "/run/media/ada/OMARCHY_202609").length, 1)
