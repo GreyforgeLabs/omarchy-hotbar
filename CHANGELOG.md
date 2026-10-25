@@ -118,7 +118,7 @@ falls back to the previous implementation when it is absent.
   with one precompiled shader (`components/shaders/flame.frag`, `.qsb`
   shipped); the CPU only nudges two numbers per tick, now at 24 fps with
   the sweep speed unchanged. Same look, in both styles and orientations.
-- Performance, measured on greyarch (Omarchy 4.0.3, Quickshell 0.3.1;
+- Performance, measured on a desktop workstation (Omarchy 4.0.3, Quickshell 0.3.1;
   medians of 40 launches, `tests/bench_native.py`; the shell A/B in an
   isolated sandbox shell on a headless output, `/proc/<pid>/stat` ticks over
   20 s windows):

@@ -1,6 +1,6 @@
 # Hotbar — Platform Audit (Phase 0)
 
-Audited on greyarch, 2026-09-12, against the *installed* host — not remembered
+Audited on a desktop workstation, 2026-09-12, against the *installed* host — not remembered
 API details.
 
 | Component | Version |
