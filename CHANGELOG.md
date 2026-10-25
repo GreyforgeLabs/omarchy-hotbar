@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-10-25
+
+One way to name an app everywhere, and a CLI that scripts can trust.
 
 - **Every command that takes an app finds it the same way.** `activate`,
   `open <app>` and the `cycle` IPC method now accept what `pin`, `unpin`
