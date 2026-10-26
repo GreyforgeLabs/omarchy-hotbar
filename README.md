@@ -154,7 +154,7 @@ Start with `hotbar doctor`. It only reads, and every line it prints names its fi
 | You see | Fix |
 |---|---|
 | `CONFLICT ~/.local/bin/hotbar points at …` | Another file owns the `hotbar` name. Remove it and run `hotbar install` again, or keep it and call `~/.config/omarchy/plugins/greyforge.hotbar/bin/hotbar` directly. |
-| `hotbar: HOTBAR widget is not answering` or `MISSING HOTBAR IPC target` | The shell is reloading the plugin. Wait a moment; if it persists, run `omarchy restart shell`. |
+| `hotbar: HOTBAR widget is not answering` or `MISSING HOTBAR IPC target` | The widget is not installed, or the shell is reloading the plugin. Run `hotbar install`, or wait a moment; if it persists, run `omarchy restart shell`. |
 | `hotbar-native is built but the widget socket is not answering` | The shell still runs the previous Hotbar. Run `omarchy restart shell` after updating. |
 | `~/.local/bin is not in PATH` | Add it to your `PATH`, or use the full path above. |
 | The pointer jumps to the middle of a window when you click a cell | `hotbar warp off` (see [Cursor warps](#cursor-warps-pointer-jumps-to-center)). |
