@@ -1,10 +1,13 @@
-![HOTBAR — A smarter panel for Omarchy](docs/assets/HOTBAR-BRAND-BANNER.png)
+![HOTBAR — A smarter panel for Omarchy](docs/assets/HOTBAR-BRAND-BANNER.webp)
 
 [![test](https://github.com/GreyforgeLabs/omarchy-hotbar/actions/workflows/test.yml/badge.svg)](https://github.com/GreyforgeLabs/omarchy-hotbar/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/GreyforgeLabs/omarchy-hotbar)](https://github.com/GreyforgeLabs/omarchy-hotbar/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-38c8e8)](LICENSE)
+[![Omarchy 4](https://img.shields.io/badge/Omarchy-4-8b95a0)](https://omarchy.org)
 
 # Hotbar
 
-Hotbar is an Omarchy 4 bar plugin for Hyprland/Quickshell that keeps pinned apps in fixed slots and moves everything else into one Running drawer.
+**Your bar stays put.** Hotbar is an Omarchy 4 bar plugin that gives each pinned app one fixed slot, opens your folders and drives from a Places cell, and moves everything else into one Running drawer. Open twenty windows and the bar keeps its shape.
 
 ## Install
 
@@ -15,12 +18,14 @@ omarchy plugin add https://github.com/GreyforgeLabs/omarchy-hotbar.git
 
 That places Hotbar after the Omarchy menu and links the `hotbar` command into `~/.local/bin`. The installer never overwrites a file it does not own. If something looks wrong afterwards, run `hotbar doctor` first.
 
+Requires Omarchy 4.x with Hyprland in Lua-config mode (the Omarchy 4 default).
+
 ## What it does
 
 The bar shows three things, always in the same order:
 
 <p align="center">
-  <img src="docs/screenshots/bar.png" alt="Hotbar in the Omarchy bar: Places, pins, Running" width="420">
+  <img src="docs/screenshots/bar.png" alt="Hotbar in the Omarchy bar: the red Places pill, pinned Dolphin, Chromium, foot (running, underlined) and btop, then the Running drawer" width="420">
 </p>
 
 **Places** — Home, XDG folders, favourites, mounted drives, Trash. One click opens any of them. Its cell is a small hot bar — a red pill with an amber bar and a flame shimmer; *Places cell → badge* in Settings spells out HOTBAR instead, and *Places flame* turns the shimmer off.
@@ -29,16 +34,22 @@ The bar shows three things, always in the same order:
 
 **Running** — a single drawer holding every unpinned app plus any pin that does not fit. The bar never grows past its budget.
 
-## Demo
+## Tour
+
+<p align="center">
+  <img src="docs/screenshots/tour.gif" alt="Hotbar 0.4.0: Places opens with folders, a favourite and two drives; the foot app menu lists three windows with thumbnails; Hotbar Settings opens" width="420">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/places.png" alt="Places popover: Home and the XDG folders, a Projects favourite, BACKUP and media drives, Open File Manager and Hotbar Settings" width="300">
+  <img src="docs/screenshots/app-menu.png" alt="App menu for foot: three windows with thumbnails, workspace and monitor, then New Window, Unpin, Move Left, Move Right, Close Current Window and Close All" width="360">
+</p>
+
+The launch film, recorded with Hotbar 0.2.0:
 
 https://github.com/user-attachments/assets/c448a696-b777-4d0d-8fa1-81cd8b216db3
 
 Repo copy: `demo/hotbar-demo.mp4` ([blob](https://github.com/GreyforgeLabs/omarchy-hotbar/blob/master/demo/hotbar-demo.mp4) · [raw](https://github.com/GreyforgeLabs/omarchy-hotbar/raw/refs/heads/master/demo/hotbar-demo.mp4)).
-
-<p align="center">
-  <img src="docs/screenshots/places.png" alt="Places popover" width="300">
-  <img src="docs/screenshots/app-menu.png" alt="App menu with window thumbnails" width="400">
-</p>
 
 ## Everyday controls
 
@@ -53,7 +64,7 @@ The app menu lists every window with its workspace and monitor, plus pin/unpin, 
 ## Settings
 
 <p align="center">
-  <img src="docs/screenshots/settings.png" alt="Hotbar Settings popover" width="360">
+  <img src="docs/screenshots/settings.png" alt="Hotbar 0.4.0 Settings popover: appearance, behaviour and visible cells" width="360">
 </p>
 
 Right-click Places and pick *Hotbar Settings* — appearance, behaviour, visible cells, and Places sections are all there. Changes apply immediately and are validated before they are written. Appearance holds **Places cell** (`minimal` is a small pill with an amber bar; `badge` spells HOTBAR) and **Places flame** (the shimmer on the Places cell; needs **Animations** on). Behaviour also holds **Keep pointer in place**, which stops Hyprland moving the pointer when Hotbar focuses a window (system-wide; same as `hotbar warp off`).
@@ -134,7 +145,19 @@ which always shows the real Hyprland state when Settings opens.
 
 ## Compatibility and safety
 
-Needs Omarchy 4.x with Hyprland in Lua-config mode. HOTBAR has no daemon and does no background polling while idle; Places runs one short helper when it opens. The native socket is served by the widget inside the shell (no extra process), lives in the user's 0700 runtime directory, and only dispatches to the same IPC functions `omarchy-shell hotbar …` reaches. A 41-window acceptance run against the live shell keeps the bar surface byte-identical before and after — see `docs/QUALIFICATION.md`.
+Needs Omarchy 4.x with Hyprland in Lua-config mode. Hotbar has no daemon and does no background polling while idle; Places runs one short helper when it opens. The native socket is served by the widget inside the shell (no extra process), lives in the user's 0700 runtime directory, and only dispatches to the same IPC functions `omarchy-shell hotbar …` reaches. A 41-window acceptance run against the live shell keeps the bar surface byte-identical before and after — see `docs/QUALIFICATION.md`.
+
+## Troubleshooting
+
+Start with `hotbar doctor`. It only reads, and every line it prints names its fix.
+
+| You see | Fix |
+|---|---|
+| `CONFLICT ~/.local/bin/hotbar points at …` | Another file owns the `hotbar` name. Remove it and run `hotbar install` again, or keep it and call `~/.config/omarchy/plugins/greyforge.hotbar/bin/hotbar` directly. |
+| `hotbar: HOTBAR widget is not answering` or `MISSING HOTBAR IPC target` | The shell is reloading the plugin. Wait a moment; if it persists, run `omarchy restart shell`. |
+| `hotbar-native is built but the widget socket is not answering` | The shell still runs the previous Hotbar. Run `omarchy restart shell` after updating. |
+| `~/.local/bin is not in PATH` | Add it to your `PATH`, or use the full path above. |
+| The pointer jumps to the middle of a window when you click a cell | `hotbar warp off` (see [Cursor warps](#cursor-warps-pointer-jumps-to-center)). |
 
 ## Removal
 
@@ -142,7 +165,7 @@ Needs Omarchy 4.x with Hyprland in Lua-config mode. HOTBAR has no daemon and doe
 hotbar uninstall
 ```
 
-That removes the CLI symlink it owns, the HOTBAR state mirror, and the plugin itself. Plain `omarchy plugin remove greyforge.hotbar` also removes the plugin but leaves the CLI link and state mirror behind.
+That removes the CLI symlink it owns, the Hotbar state mirror, and the plugin itself. Plain `omarchy plugin remove greyforge.hotbar` also removes the plugin but leaves the CLI link and state mirror behind.
 
 ## Development
 
@@ -162,9 +185,16 @@ Background reading: `docs/PLATFORM-AUDIT.md` (what the host provides), `docs/QUA
 ## More from Greyforge Labs
 
 - [Reprieve](https://github.com/GreyforgeLabs/reprieve) — a safety net for Super+W: the window hides instead of closing, one keystroke brings it back.
+- [CRIS](https://github.com/GreyforgeLabs/omarchy-cris) — CPU, RAM, Internet and Storage in one line of the bar, from a 16 KB process.
 - [Sley](https://github.com/sley-lang/sley) — a machine-native programming language for AI agents.
-- [All Greyforge Labs projects](https://github.com/GreyforgeLabs)
+- [All Greyforge Labs tools](https://greyforge.tech/open-source)
 
 ## License
 
 MIT — Greyforge Labs.
+
+---
+
+<p align="center">
+  <b>Bar stayed put?</b> <a href="https://github.com/GreyforgeLabs/omarchy-hotbar">Star Hotbar on GitHub</a> · <a href="https://x.com/GreyforgeLabs">Follow @GreyforgeLabs</a> · <a href="https://greyforge.tech/open-source">More Omarchy tools at greyforge.tech</a>
+</p>
